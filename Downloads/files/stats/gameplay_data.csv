@@ -1,7 +1,0 @@
-session_id,timestamp,char_class,outcome,score,enemies_defeated,total_damage,duration_sec,items_collected,level_reached,gold_earned,stage_reached,boss_kills
-1773402624_9666,2026-03-13T18:50:24,Ranger,death,150,1,37,49,0,1,68,1,0
-1773402920_7795,2026-03-13T18:55:20,Ranger,death,680,5,227,40,3,1,109,1,0
-1773403407_8797,2026-03-13T19:03:27,Ranger,death,300,2,73,16,1,1,76,1,0
-1773403963_3165,2026-03-13T19:12:43,Ranger,death,1030,8,237,39,4,2,137,1,0
-1773404153_7124,2026-03-13T19:15:53,Mage,death,150,1,236,24,0,1,73,1,0
-1773404221_5769,2026-03-13T19:17:01,Ranger,death,1260,11,333,47,3,2,164,1,0
