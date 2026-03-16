@@ -3,14 +3,18 @@ constants.py  –  All game-wide constants and configuration
 """
 
 # ── Screen ────────────────────────────────────────────────────
-SCREEN_W, SCREEN_H = 1024, 768
+SCREEN_W, SCREEN_H = 1920, 1080
 FPS = 60
 TITLE = "Sausage Man: Legends of Midgard"
 
 # ── Tile ─────────────────────────────────────────────────────
-TILE = 48
-ROOM_COLS = 17   # tiles wide per room (visible area)
-ROOM_ROWS = 13   # tiles tall per room
+TILE      = 72
+ROOM_COLS = 17
+ROOM_ROWS = 13
+
+# FIX: export map dimensions so bullet.py can compute correct world bounds
+MAP_W = 32   # tiles (mirrors Stage.MAP_W)
+MAP_H = 24   # tiles (mirrors Stage.MAP_H)
 
 # ── Colors ───────────────────────────────────────────────────
 BLACK      = (0,   0,   0)
@@ -55,102 +59,130 @@ STATE_LEVEL_UP   = "level_up"
 
 # ── Player classes ────────────────────────────────────────────
 CLASSES = {
-    "Warrior": {
-        "color": RED,
-        "base_stats": {"STR": 8, "AGI": 4, "VIT": 8, "INT": 2, "DEX": 4, "LUK": 3},
-        "hp_per_vit": 12,
-        "base_hp": 150,
-        "speed": 3.0,
-        "description": "Tank melee fighter. High HP and strength.",
-        "passive": "Iron Skin: Reduce all incoming damage by 10%.",
-    },
     "Mage": {
-        "color": PURPLE,
-        "base_stats": {"STR": 2, "AGI": 4, "VIT": 3, "INT": 10, "DEX": 5, "LUK": 4},
-        "hp_per_vit": 8,
-        "base_hp": 90,
+        "color": (140, 50, 220),
+        "base_hp": 110,
+        "max_armor": 70,
+        "max_mana": 180,
         "speed": 3.2,
-        "description": "Powerful spellcaster. High magic damage.",
-        "passive": "Arcane Mind: +20% spell damage, bullets pierce one enemy.",
+        "base_damage": 18,
+        "fire_rate": 0.55,
+        "bullet_speed": 9,
+        "description": "Arcane spellcaster. Bullets pierce 1 enemy.",
+        "passive": "Arcane Mind: Bullets pierce 1 enemy.",
+        "weapon_class": "Any",
+    },
+    "Necromancer": {
+        "color": (60, 180, 120),
+        "base_hp": 120,
+        "max_armor": 60,
+        "max_mana": 160,
+        "speed": 3.0,
+        "base_damage": 16,
+        "fire_rate": 0.60,
+        "bullet_speed": 8,
+        "description": "Dark summoner. Each kill restores HP and Mana.",
+        "passive": "Soul Drain: Each kill restores 8 HP and 6 Mana.",
+        "weapon_class": "Any",
     },
     "Ranger": {
-        "color": GREEN,
-        "base_stats": {"STR": 4, "AGI": 8, "VIT": 4, "INT": 3, "DEX": 9, "LUK": 6},
-        "hp_per_vit": 9,
-        "base_hp": 110,
+        "color": (50, 190, 80),
+        "base_hp": 120,
+        "max_armor": 80,
+        "max_mana": 100,
         "speed": 4.0,
-        "description": "Swift ranged attacker. High crit and speed.",
-        "passive": "Eagle Eye: +15% crit chance, +20% bullet speed.",
+        "base_damage": 15,
+        "fire_rate": 0.70,
+        "bullet_speed": 11,
+        "description": "Swift hunter. High crit and bullet speed.",
+        "passive": "Eagle Eye: +15% crit. Bullets move 20% faster.",
+        "weapon_class": "Any",
+    },
+    "Rogue": {
+        "color": (80, 160, 220),
+        "base_hp": 110,
+        "max_armor": 65,
+        "max_mana": 110,
+        "speed": 4.5,
+        "base_damage": 14,
+        "fire_rate": 0.80,
+        "bullet_speed": 10,
+        "description": "Nimble trickster. +8% dodge. Gold drops +30%.",
+        "passive": "Shadow Step: +8% dodge. Crits deal ×2.5.",
+        "weapon_class": "Any",
     },
 }
 
 # ── Stages ───────────────────────────────────────────────────
 STAGE_CONFIGS = [
-    {"id": 0, "name": "Forest of Trials",   "theme": "forest",   "color": DARK_GREEN,  "enemy_types": ["Slime", "Wolf"],          "boss": "Elder Treant"},
-    {"id": 1, "name": "Dungeon of Shadows",  "theme": "dungeon",  "color": DARK_GRAY,   "enemy_types": ["Skeleton", "Bat"],        "boss": "Bone Overlord"},
-    {"id": 2, "name": "Volcanic Fortress",   "theme": "volcano",  "color": DARK_RED,    "enemy_types": ["FireImp", "Golem"],       "boss": "Lava Titan"},
-    {"id": 3, "name": "Sky Citadel",         "theme": "sky",      "color": LIGHT_BLUE,  "enemy_types": ["Harpy", "StormMage"],     "boss": "Storm Sovereign"},
-    {"id": 4, "name": "Final Chamber",       "theme": "chaos",    "color": PURPLE,      "enemy_types": ["EliteHybrid", "Wraith"], "boss": "Demon King Baldr"},
+    {"id": 0, "name": "Forest of Trials",   "theme": "forest",  "color": DARK_GREEN, "enemy_types": ["Slime", "Wolf"],           "boss": "Elder Treant",      "elite_shooter": "GunnerElite"},
+    {"id": 1, "name": "Dungeon of Shadows",  "theme": "dungeon", "color": DARK_GRAY,  "enemy_types": ["Skeleton", "Bat"],         "boss": "Bone Overlord",     "elite_shooter": "SniperElite"},
+    {"id": 2, "name": "Volcanic Fortress",   "theme": "volcano", "color": DARK_RED,   "enemy_types": ["FireImp", "Golem"],        "boss": "Lava Titan",        "elite_shooter": "BurstElite"},
+    {"id": 3, "name": "Sky Citadel",         "theme": "sky",     "color": LIGHT_BLUE, "enemy_types": ["Harpy", "StormMage"],      "boss": "Storm Sovereign",   "elite_shooter": "MissileElite"},
+    {"id": 4, "name": "Final Chamber",       "theme": "chaos",   "color": PURPLE,     "enemy_types": ["EliteHybrid", "Wraith"],   "boss": "Demon King Baldr",  "elite_shooter": "OmniElite"},
 ]
 
-# ── Enemy stats (base, scales with stage) ────────────────────
-# hp / atk / speed / exp — stage 1-2 enemies nerfed for easier early game
+# ── Enemy stats ───────────────────────────────────────────────
 ENEMY_DATA = {
-    "Slime":      {"hp": 18,  "atk": 3,  "speed": 1.3, "exp": 10,  "color": GREEN,      "size": 20, "ai": "chase",  "range": 0,   "shoot": False},
-    "Wolf":       {"hp": 28,  "atk": 6,  "speed": 2.2, "exp": 15,  "color": GRAY,       "size": 22, "ai": "chase",  "range": 0,   "shoot": False},
-    "Skeleton":   {"hp": 32,  "atk": 8,  "speed": 1.5, "exp": 18,  "color": WHITE,      "size": 22, "ai": "patrol", "range": 0,   "shoot": False},
-    "Bat":        {"hp": 15,  "atk": 5,  "speed": 2.8, "exp": 12,  "color": PURPLE,     "size": 16, "ai": "chase",  "range": 0,   "shoot": False},
-    "FireImp":    {"hp": 45,  "atk": 10, "speed": 2.0, "exp": 22,  "color": ORANGE,     "size": 20, "ai": "shoot",  "range": 200, "shoot": True},
-    "Golem":      {"hp": 90,  "atk": 14, "speed": 0.9, "exp": 30,  "color": BROWN,      "size": 30, "ai": "chase",  "range": 0,   "shoot": False},
-    "Harpy":      {"hp": 40,  "atk": 10, "speed": 3.2, "exp": 25,  "color": CYAN,       "size": 20, "ai": "chase",  "range": 0,   "shoot": False},
-    "StormMage":  {"hp": 55,  "atk": 14, "speed": 1.4, "exp": 32,  "color": LIGHT_BLUE, "size": 22, "ai": "shoot",  "range": 250, "shoot": True},
-    "EliteHybrid":{"hp": 100, "atk": 22, "speed": 2.8, "exp": 40,  "color": RED,        "size": 24, "ai": "shoot",  "range": 200, "shoot": True},
-    "Wraith":     {"hp": 80,  "atk": 20, "speed": 2.0, "exp": 35,  "color": PURPLE,     "size": 22, "ai": "chase",  "range": 0,   "shoot": False},
-    # Bosses — slightly more forgiving HP
-    "Elder Treant":     {"hp": 280, "atk": 18, "speed": 1.0, "exp": 180, "color": DARK_GREEN, "size": 50, "ai": "boss", "range": 180, "shoot": True},
-    "Bone Overlord":    {"hp": 380, "atk": 22, "speed": 1.3, "exp": 220, "color": WHITE,      "size": 50, "ai": "boss", "range": 200, "shoot": True},
-    "Lava Titan":       {"hp": 550, "atk": 30, "speed": 1.0, "exp": 280, "color": ORANGE,     "size": 55, "ai": "boss", "range": 220, "shoot": True},
-    "Storm Sovereign":  {"hp": 700, "atk": 36, "speed": 1.6, "exp": 340, "color": CYAN,       "size": 55, "ai": "boss", "range": 250, "shoot": True},
-    "Demon King Baldr": {"hp": 1000,"atk": 48, "speed": 1.8, "exp": 600, "color": PURPLE,     "size": 60, "ai": "boss", "range": 280, "shoot": True},
+    "Slime":      {"hp": 22,  "atk": 4,  "speed": 1.3, "exp": 10,  "color": GREEN,      "size": 20, "ai": "shoot", "range": 180, "shoot": True},
+    "Wolf":       {"hp": 35,  "atk": 7,  "speed": 2.2, "exp": 15,  "color": GRAY,       "size": 22, "ai": "shoot", "range": 160, "shoot": True},
+    "Skeleton":   {"hp": 38,  "atk": 9,  "speed": 1.5, "exp": 18,  "color": WHITE,      "size": 22, "ai": "shoot", "range": 200, "shoot": True},
+    "Bat":        {"hp": 18,  "atk": 6,  "speed": 2.8, "exp": 12,  "color": PURPLE,     "size": 16, "ai": "shoot", "range": 150, "shoot": True},
+    "FireImp":    {"hp": 45,  "atk": 10, "speed": 2.0, "exp": 22,  "color": ORANGE,     "size": 20, "ai": "shoot", "range": 200, "shoot": True},
+    "Golem":      {"hp": 100, "atk": 16, "speed": 0.9, "exp": 30,  "color": BROWN,      "size": 30, "ai": "shoot", "range": 140, "shoot": True},
+    "Harpy":      {"hp": 42,  "atk": 11, "speed": 3.2, "exp": 25,  "color": CYAN,       "size": 20, "ai": "shoot", "range": 180, "shoot": True},
+    "StormMage":  {"hp": 55,  "atk": 14, "speed": 1.4, "exp": 32,  "color": LIGHT_BLUE, "size": 22, "ai": "shoot", "range": 250, "shoot": True},
+    "EliteHybrid":{"hp": 100, "atk": 22, "speed": 2.8, "exp": 40,  "color": RED,        "size": 24, "ai": "shoot", "range": 200, "shoot": True},
+    "Wraith":     {"hp": 85,  "atk": 20, "speed": 2.0, "exp": 35,  "color": PURPLE,     "size": 22, "ai": "shoot", "range": 190, "shoot": True},
+    # ── Elite Shooters ────────────────────────────────────────────
+    "GunnerElite":  {"hp": 120, "atk": 16, "speed": 1.6, "exp": 80,  "color": (255, 80,  180), "size": 26, "ai": "elite_shoot", "range": 300, "shoot": True, "elite": True},
+    "SniperElite":  {"hp": 95,  "atk": 22, "speed": 1.2, "exp": 90,  "color": (80,  240, 255), "size": 24, "ai": "elite_shoot", "range": 380, "shoot": True, "elite": True},
+    "BurstElite":   {"hp": 140, "atk": 12, "speed": 2.0, "exp": 85,  "color": (255, 180, 50),  "size": 26, "ai": "elite_shoot", "range": 260, "shoot": True, "elite": True},
+    "MissileElite": {"hp": 160, "atk": 18, "speed": 1.4, "exp": 95,  "color": (180, 60,  255), "size": 28, "ai": "elite_shoot", "range": 320, "shoot": True, "elite": True},
+    "OmniElite":    {"hp": 200, "atk": 20, "speed": 1.8, "exp": 110, "color": (255, 60,  60),  "size": 30, "ai": "elite_shoot", "range": 350, "shoot": True, "elite": True},
+    # ── Bosses ────────────────────────────────────────────────────
+    "Elder Treant":     {"hp": 280,  "atk": 18, "speed": 1.0, "exp": 180, "color": DARK_GREEN, "size": 50, "ai": "boss", "range": 180, "shoot": True},
+    "Bone Overlord":    {"hp": 380,  "atk": 22, "speed": 1.3, "exp": 220, "color": WHITE,      "size": 50, "ai": "boss", "range": 200, "shoot": True},
+    "Lava Titan":       {"hp": 550,  "atk": 30, "speed": 1.0, "exp": 280, "color": ORANGE,     "size": 55, "ai": "boss", "range": 220, "shoot": True},
+    "Storm Sovereign":  {"hp": 700,  "atk": 36, "speed": 1.6, "exp": 340, "color": CYAN,       "size": 55, "ai": "boss", "range": 250, "shoot": True},
+    "Demon King Baldr": {"hp": 1000, "atk": 48, "speed": 1.8, "exp": 600, "color": PURPLE,     "size": 60, "ai": "boss", "range": 280, "shoot": True},
 }
 
 # ── Item pools ───────────────────────────────────────────────
-# Weapon pool: (name, dmg, fire_rate, bullet_speed, rarity, color, desc, weapon_class, stat_bonus)
-# stat_bonus: dict of {stat: value} applied when equipped  e.g. {"STR":3,"VIT":2}
+# (name, dmg, fire_rate, bullet_speed, rarity, color, desc, weapon_class, stat_bonus)
 WEAPON_POOL = [
-    # ── WARRIOR ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("Iron Sword",     18, 0,    0,  "Common",    GRAY,       "+3 STR  +2 VIT",                    "Warrior", {"STR":3,"VIT":2}),
-    ("Battle Axe",     22, 0,    0,  "Common",    BROWN,      "+4 STR  +1 AGI",                    "Warrior", {"STR":4,"AGI":1}),
-    ("Steel Sword",    32, 0,    0,  "Rare",      LIGHT_GRAY, "+6 STR  +3 VIT  +2 DEX",            "Warrior", {"STR":6,"VIT":3,"DEX":2}),
-    ("War Hammer",     40, 0,    0,  "Rare",      GRAY,       "+5 STR  +5 VIT  stuns on hit",      "Warrior", {"STR":5,"VIT":5}),
-    ("Shadow Blade",   54, 0,    0,  "Epic",      PURPLE,     "+9 STR  +4 AGI  +3 LUK  lifesteal", "Warrior", {"STR":9,"AGI":4,"LUK":3}),
-    ("Berserker Axe",  66, 0,    0,  "Epic",      RED,        "+12 STR  +4 VIT  berserk bonus",    "Warrior", {"STR":12,"VIT":4}),
-    ("Excalibur",      92, 0,    0,  "Legendary", GOLD,       "+15 STR  +10 VIT  +8 DEX  +5 LUK",  "Warrior", {"STR":15,"VIT":10,"DEX":8,"LUK":5}),
-    ("Ragnarok Sword", 115,0,    0,  "Legendary", RED,        "+18 STR  +8 VIT  +6 AGI  cleave",   "Warrior", {"STR":18,"VIT":8,"AGI":6}),
-
-    # ── MAGE ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("Magic Wand",     16, 0.5,  8,  "Common",    LIGHT_BLUE, "+3 INT  +2 DEX",                    "Mage",    {"INT":3,"DEX":2}),
-    ("Fire Wand",      20, 0.5,  8,  "Common",    ORANGE,     "+4 INT  +1 LUK",                    "Mage",    {"INT":4,"LUK":1}),
-    ("Ice Staff",      30, 0.45, 8,  "Rare",      CYAN,       "+6 INT  +3 DEX  +2 AGI  slows",     "Mage",    {"INT":6,"DEX":3,"AGI":2}),
-    ("Fire Staff",     36, 0.5,  9,  "Rare",      ORANGE,     "+7 INT  +3 VIT  burn DoT",          "Mage",    {"INT":7,"VIT":3}),
-    ("Chaos Staff",    52, 0.55, 10, "Epic",      PURPLE,     "+11 INT  +5 DEX  +4 LUK  chaos dmg","Mage",    {"INT":11,"DEX":5,"LUK":4}),
-    ("Thunder Staff",  62, 0.6,  10, "Epic",      CYAN,       "+13 INT  +5 AGI  chain lightning",  "Mage",    {"INT":13,"AGI":5}),
-    ("Void Staff",     88, 0.65, 12, "Legendary", PURPLE,     "+18 INT  +8 DEX  +6 LUK  void",     "Mage",    {"INT":18,"DEX":8,"LUK":6}),
-    ("Arcane Catalyst",102,0.7,  12, "Legendary", LIGHT_BLUE, "+20 INT  +10 DEX  +5 VIT  dbl cast","Mage",    {"INT":20,"DEX":10,"VIT":5}),
-
-    # ── RANGER ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("Short Bow",      15, 0.45, 7,  "Common",    BROWN,      "+3 DEX  +2 AGI",                    "Ranger",  {"DEX":3,"AGI":2}),
-    ("Hunter Bow",     19, 0.5,  8,  "Common",    BROWN,      "+4 DEX  +2 LUK",                    "Ranger",  {"DEX":4,"LUK":2}),
-    ("Long Bow",       28, 0.55, 9,  "Rare",      GOLD,       "+6 DEX  +4 AGI  +2 LUK",            "Ranger",  {"DEX":6,"AGI":4,"LUK":2}),
-    ("Crossbow",       34, 0.5,  10, "Rare",      GRAY,       "+7 DEX  +3 STR  armor-pierce",      "Ranger",  {"DEX":7,"STR":3}),
-    ("Thunder Bow",    46, 0.65, 12, "Epic",      CYAN,       "+10 DEX  +6 AGI  +4 LUK  pierce",   "Ranger",  {"DEX":10,"AGI":6,"LUK":4}),
-    ("Sniper Bow",     58, 0.4,  16, "Epic",      GREEN,      "+12 DEX  +5 AGI  +6 LUK  +crit",    "Ranger",  {"DEX":12,"AGI":5,"LUK":6}),
-    ("Dragon Bow",     78, 0.75, 14, "Legendary", RED,        "+16 DEX  +10 AGI  +6 STR  fire arr","Ranger",  {"DEX":16,"AGI":10,"STR":6}),
-    ("Wind Bow",       92, 0.9,  16, "Legendary", CYAN,       "+18 DEX  +12 AGI  +8 LUK  2 arrows","Ranger",  {"DEX":18,"AGI":12,"LUK":8}),
+    # ── COMMON ─────────────────────────────────────────────────────
+    ("Magic Wand",      16, 0.55, 9,  "Common",    LIGHT_BLUE, "Pierces 1 enemy",            "Any", {}),
+    ("Short Bow",       15, 0.65, 10, "Common",    BROWN,      "Fast light arrows",           "Any", {}),
+    ("Hand Pistol",     14, 0.80, 11, "Common",    LIGHT_GRAY, "Rapid-fire pistol",           "Any", {}),
+    ("Soul Staff",      15, 0.60, 8,  "Common",    GREEN,      "Dark energy bolts",           "Any", {}),
+    ("Fire Wand",       20, 0.50, 8,  "Common",    ORANGE,     "Flaming shots",               "Any", {}),
+    ("Hunter Bow",      19, 0.55, 9,  "Common",    BROWN,      "Sturdy hunting bow",          "Any", {}),
+    # ── RARE ───────────────────────────────────────────────────────
+    ("Ice Staff",       30, 0.50, 9,  "Rare",      CYAN,       "Slowing ice shards",          "Any", {}),
+    ("Fire Staff",      36, 0.50, 9,  "Rare",      ORANGE,     "Burn on every hit",           "Any", {}),
+    ("Long Bow",        28, 0.60, 10, "Rare",      GOLD,       "High-power bow",              "Any", {}),
+    ("Crossbow",        34, 0.55, 11, "Rare",      GRAY,       "Armor-piercing bolts",        "Any", {}),
+    ("Plasma Rifle",    32, 0.70, 12, "Rare",      CYAN,       "Rapid plasma shots",          "Any", {}),
+    ("Shadow Dart",     26, 0.85, 13, "Rare",      PURPLE,     "Silent poison darts",         "Any", {}),
+    # ── EPIC ───────────────────────────────────────────────────────
+    ("Chaos Staff",     52, 0.60, 10, "Epic",      PURPLE,     "Chaos energy blasts",         "Any", {}),
+    ("Thunder Staff",   62, 0.65, 11, "Epic",      CYAN,       "Chain lightning",             "Any", {}),
+    ("Thunder Bow",     46, 0.70, 13, "Epic",      CYAN,       "Electric pierce arrows",      "Any", {}),
+    ("Sniper Bow",      58, 0.40, 17, "Epic",      GREEN,      "High-crit long-range",        "Any", {}),
+    ("Laser Cannon",    55, 0.50, 15, "Epic",      LIGHT_BLUE, "Focused laser beam",          "Any", {}),
+    ("Gatling Wand",    28, 1.30, 11, "Epic",      YELLOW,     "Spray magic bullets fast",    "Any", {}),
+    # ── LEGENDARY ──────────────────────────────────────────────────
+    ("Void Staff",      88, 0.70, 13, "Legendary", PURPLE,     "Tears reality — pierces all", "Any", {}),
+    ("Arcane Catalyst", 102,0.75, 13, "Legendary", LIGHT_BLUE, "Double-cast arcane blasts",   "Any", {}),
+    ("Dragon Bow",      78, 0.80, 15, "Legendary", RED,        "Exploding fire arrows",       "Any", {}),
+    ("Wind Bow",        92, 0.95, 17, "Legendary", CYAN,       "Fires 2 arrows per shot",     "Any", {}),
+    ("Railgun",         120,0.30, 22, "Legendary", LIGHT_BLUE, "Hyper-velocity round",        "Any", {}),
+    ("Infinity Wand",   95, 0.85, 14, "Legendary", GOLD,       "Unlimited magical energy",    "Any", {}),
 ]
 
 ARMOR_POOL = [
-    # name, defense, rarity, color, description
+    # (name, defense, rarity, color, description)
     ("Cloth Robe",    3,  "Common",    LIGHT_GRAY, "Light cloth armor."),
     ("Leather Armor", 6,  "Common",    BROWN,      "Basic leather protection."),
     ("Chainmail",     10, "Rare",      GRAY,       "Metal chain links."),
@@ -162,54 +194,70 @@ ARMOR_POOL = [
 ]
 
 ACCESSORY_POOL = [
-    # name, effect_desc, rarity, color, stat_bonus
-    ("Iron Ring",     "Common",    GRAY,       "+3 STR",         {"STR": 3}),
-    ("Speed Boots",   "Common",    BROWN,      "+3 AGI",         {"AGI": 3}),
-    ("HP Talisman",   "Rare",      RED,        "+30 Max HP",     {"VIT": 3}),
-    ("Mana Crystal",  "Rare",      LIGHT_BLUE, "+5 INT",         {"INT": 5}),
-    ("Lucky Charm",   "Epic",      GOLD,       "+8 LUK, +5% crit", {"LUK": 8}),
-    ("Berserker Ring","Epic",      RED,        "+10 STR, -5 VIT", {"STR": 10, "VIT": -5}),
-    ("God's Amulet",  "Legendary", GOLD,       "+5 all stats",   {"STR": 5, "AGI": 5, "VIT": 5, "INT": 5, "DEX": 5, "LUK": 5}),
+    # (name, rarity, color, effect_desc, stat_bonus)
+    ("Iron Ring",      "Common",    GRAY,       "+3 STR",           {"STR": 3}),
+    ("Speed Boots",    "Common",    BROWN,      "+3 AGI",           {"AGI": 3}),
+    ("HP Talisman",    "Rare",      RED,        "+30 Max HP",       {"VIT": 3}),
+    ("Mana Crystal",   "Rare",      LIGHT_BLUE, "+5 INT",           {"INT": 5}),
+    ("Lucky Charm",    "Epic",      GOLD,       "+8 LUK, +5% crit", {"LUK": 8}),
+    ("Berserker Ring", "Epic",      RED,        "+10 STR, -5 VIT",  {"STR": 10, "VIT": -5}),
+    ("God's Amulet",   "Legendary", GOLD,       "+5 all stats",     {"STR": 5, "AGI": 5, "VIT": 5, "INT": 5, "DEX": 5, "LUK": 5}),
 ]
 
-# ── EXP curve: exp_needed = BASE * level^1.5 ────────────────
-EXP_BASE = 25   # lowered from 40 — faster early leveling
-
-# ── Stat effects (multipliers per point) ────────────────────
-# Each stat point gives:
-STAT_EFFECTS = {
-    "STR": {"atk_bonus": 2},      # +2 physical atk per STR
-    "AGI": {"speed_bonus": 0.05}, # +0.05 move speed per AGI
-    "VIT": {"hp_bonus": 8},       # +8 max HP per VIT
-    "INT": {"spell_bonus": 2.5},  # +2.5 magic dmg per INT
-    "DEX": {"crit_bonus": 0.005}, # +0.5% crit per DEX
-    "LUK": {"drop_bonus": 0.01},  # +1% better loot per LUK
-}
+# ── EXP (kept minimal - no level up UI) ──────────────────────
+EXP_BASE = 25
 
 # ── Shop prices ──────────────────────────────────────────────
 SHOP_HEAL_COST   = 50
-SHOP_REROLL_COST = 30   # gold cost to reroll shop items
+SHOP_REROLL_COST = 30
 SHOP_ITEM_MULT   = {"Common": 30, "Rare": 80, "Epic": 180, "Legendary": 400}
 
 # ── UI Layout ────────────────────────────────────────────────
-HUD_H     = 80    # bottom HUD height
-MINIMAP_S = 120   # minimap size
+HUD_H     = 80
+MINIMAP_S = 120
 
-# ── Skills ───────────────────────────────────────────
+# ── Skills ───────────────────────────────────────────────────
 CLASS_SKILLS = {
-    "Warrior": {
-        "name": "Whirlwind",
+    "Knight": {
+        "name": "Shield Slam",
         "cooldown": 5.0,
-        "description": "Spin attack hitting all nearby enemies.",
+        "mana_cost": 15,
+        "description": "Slam forward, stunning nearby enemies. Restores 30 Armor.",
+        "type": "shield_slam",
+    },
+    "Berserker": {
+        "name": "Whirlwind",
+        "cooldown": 4.0,
+        "mana_cost": 12,
+        "description": "Spin attack hitting ALL nearby enemies for 3x damage.",
+        "type": "whirlwind",
     },
     "Mage": {
-        "name": "Fireball",
-        "cooldown": 4.0,
-        "description": "Launch explosive fireball.",
+        "name": "Nova Burst",
+        "cooldown": 4.5,
+        "mana_cost": 30,
+        "description": "Magic explosion around you, hits all nearby enemies.",
+        "type": "nova_burst",
+    },
+    "Necromancer": {
+        "name": "Death Bolt",
+        "cooldown": 3.5,
+        "mana_cost": 25,
+        "description": "Homing dark bolt seeks the nearest enemy.",
+        "type": "death_bolt",
     },
     "Ranger": {
         "name": "Triple Shot",
-        "cooldown": 3.5,
-        "description": "Shoot three arrows at once.",
-    }
+        "cooldown": 3.0,
+        "mana_cost": 10,
+        "description": "Fire 3 arrows in a spread at once.",
+        "type": "triple_shot",
+    },
+    "Rogue": {
+        "name": "Smoke Dash",
+        "cooldown": 4.0,
+        "mana_cost": 18,
+        "description": "Dash through enemies dealing damage + brief invincibility.",
+        "type": "smoke_dash",
+    },
 }

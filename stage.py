@@ -188,8 +188,21 @@ class Stage:
     def spawn_enemies(self, stage_level, skip_room=None):
         """
         Spawn enemies in all rooms except skip_room.
+        One Elite Shooter is placed in a dedicated room (not boss room).
         Returns list of Enemy objects.
         """
+        from constants import STAGE_CONFIGS
+        cfg          = STAGE_CONFIGS[self.stage_id] if self.stage_id < len(STAGE_CONFIGS) else {}
+        elite_type   = cfg.get("elite_shooter")
+        # Pick a room for the elite (middle-sized, not boss, not skip)
+        eligible     = [r for r in self.rooms if not r.is_boss and r is not skip_room]
+        elite_room   = None
+        if eligible and elite_type:
+            # prefer a room with moderate size
+            eligible_sorted = sorted(eligible,
+                key=lambda r: abs(r.rect.w * r.rect.h - 40), reverse=False)
+            elite_room = eligible_sorted[len(eligible_sorted) // 2]
+
         enemies = []
         for room in self.rooms:
             if room is skip_room:
@@ -202,6 +215,13 @@ class Stage:
                 enemies.append(boss)
                 # Extra minions around boss
                 for pt in room.get_spawn_points(3):
+                    e_type = random.choice(self.enemy_types)
+                    enemies.append(make_enemy(e_type, pt[0], pt[1], stage_level))
+            elif room is elite_room and elite_type:
+                # Spawn the Elite Shooter at room center
+                enemies.append(make_enemy(elite_type, room.cx, room.cy, stage_level))
+                # Fewer regular enemies in elite room
+                for pt in room.get_spawn_points(max(1, count - 1)):
                     e_type = random.choice(self.enemy_types)
                     enemies.append(make_enemy(e_type, pt[0], pt[1], stage_level))
             else:

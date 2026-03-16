@@ -21,7 +21,7 @@ from game_manager import GameManager
 def main():
     pygame.init()
     pygame.mixer.init()
-    screen = pygame.display.set_mode((1024, 768))
+    screen = pygame.display.set_mode((1920, 1080))
     pygame.display.set_caption("Sausage Man: Legends of Midgard")
     pygame.display.set_icon(pygame.Surface((32, 32)))
 
