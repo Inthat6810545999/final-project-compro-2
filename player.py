@@ -234,9 +234,113 @@ class Player:
             pygame.draw.circle(surface, col, (sx, sy), r)
             pygame.draw.circle(surface, WHITE, (sx, sy), r, 2)
 
-        ex = sx + int(math.cos(self.facing_angle) * (r + 6))
-        ey = sy + int(math.sin(self.facing_angle) * (r + 6))
-        pygame.draw.circle(surface, (255, 255, 100), (ex, ey), 4)
+        # ── Draw gun model ────────────────────────────────────
+        self._draw_gun(surface, sx, sy, r)
+
+    def _draw_gun(self, surface, sx, sy, r):
+        """Draw gun model rotated toward facing angle."""
+        import math
+        wpn = self.weapon
+        if not wpn or wpn.is_melee:
+            return
+        fx = self.effect if hasattr(self, 'effect') else getattr(wpn, 'effect', {})
+        if hasattr(wpn, 'effect'):
+            fx = wpn.effect
+        else:
+            fx = {}
+
+        gun_shape = fx.get("gun_shape", "pistol")
+        gun_color = fx.get("gun_color", (160, 160, 180))
+        dark_col  = tuple(max(0, c - 60) for c in gun_color)
+
+        angle  = self.facing_angle
+        ox     = sx + int(math.cos(angle) * (r - 4))
+        oy     = sy + int(math.sin(angle) * (r - 4))
+        cos_a  = math.cos(angle)
+        sin_a  = math.sin(angle)
+        perp_x = -sin_a
+        perp_y =  cos_a
+
+        def pt(forward, side):
+            return (int(ox + cos_a * forward + perp_x * side),
+                    int(oy + sin_a * forward + perp_y * side))
+
+        if gun_shape == "pistol" or gun_shape == "revolver":
+            barrel_len = 18 if gun_shape == "revolver" else 14
+            w = 4 if gun_shape == "revolver" else 3
+            points = [pt(0, -w), pt(barrel_len, -w), pt(barrel_len, w), pt(0, w)]
+            pygame.draw.polygon(surface, gun_color, points)
+            pygame.draw.polygon(surface, dark_col,  points, 1)
+            # Grip
+            grip = [pt(-4, -w), pt(0, -w), pt(0, w+2), pt(-4, w+2)]
+            pygame.draw.polygon(surface, dark_col, grip)
+
+        elif gun_shape == "smg":
+            points = [pt(0, -3), pt(16, -3), pt(16, 3), pt(0, 3)]
+            pygame.draw.polygon(surface, gun_color, points)
+            pygame.draw.polygon(surface, dark_col,  points, 1)
+            # Stock
+            stock = [pt(-8, -3), pt(0, -3), pt(0, 3), pt(-8, 2)]
+            pygame.draw.polygon(surface, dark_col, stock)
+            # Mag
+            mag = [pt(-4, 3), pt(0, 3), pt(0, 8), pt(-4, 8)]
+            pygame.draw.polygon(surface, dark_col, mag)
+
+        elif gun_shape == "shotgun":
+            # Wide double barrel
+            for off in (-2, 2):
+                pts = [pt(0, off-2), pt(22, off-2), pt(22, off+2), pt(0, off+2)]
+                pygame.draw.polygon(surface, gun_color, pts)
+            pygame.draw.circle(surface, dark_col, pt(22, -2), 3)
+            pygame.draw.circle(surface, dark_col, pt(22,  2), 3)
+            # Stock
+            stock = [pt(-10, -4), pt(0, -4), pt(0, 4), pt(-10, 3)]
+            pygame.draw.polygon(surface, dark_col, stock)
+
+        elif gun_shape == "rifle":
+            points = [pt(0, -3), pt(26, -3), pt(26, 3), pt(0, 3)]
+            pygame.draw.polygon(surface, gun_color, points)
+            pygame.draw.polygon(surface, dark_col,  points, 1)
+            # Stock
+            stock = [pt(-12, -3), pt(0, -3), pt(0, 3), pt(-12, 2)]
+            pygame.draw.polygon(surface, dark_col, stock)
+            # Mag
+            mag = [pt(-6, 3), pt(-1, 3), pt(-1, 9), pt(-6, 9)]
+            pygame.draw.polygon(surface, dark_col, mag)
+
+        elif gun_shape == "sniper":
+            # Long thin barrel
+            points = [pt(0, -2), pt(34, -2), pt(34, 2), pt(0, 2)]
+            pygame.draw.polygon(surface, gun_color, points)
+            pygame.draw.polygon(surface, dark_col,  points, 1)
+            # Scope
+            scope = [pt(8, -5), pt(18, -5), pt(18, -2), pt(8, -2)]
+            pygame.draw.polygon(surface, (40, 40, 60), scope)
+            pygame.draw.polygon(surface, (100, 200, 255), scope, 1)
+            # Stock
+            stock = [pt(-14, -2), pt(0, -2), pt(0, 2), pt(-14, 2)]
+            pygame.draw.polygon(surface, dark_col, stock)
+
+        elif gun_shape == "launcher":
+            # Big wide tube
+            points = [pt(0, -6), pt(28, -6), pt(28, 6), pt(0, 6)]
+            pygame.draw.polygon(surface, gun_color, points)
+            pygame.draw.polygon(surface, dark_col,  points, 2)
+            # Muzzle ring
+            pygame.draw.circle(surface, dark_col, pt(28, 0), 6, 2)
+            # Grip
+            grip = [pt(-6, -4), pt(0, -4), pt(0, 6), pt(-6, 6)]
+            pygame.draw.polygon(surface, dark_col, grip)
+
+        elif gun_shape == "minigun":
+            # 3 rotating barrels
+            for i, off in enumerate((-4, 0, 4)):
+                col_v = gun_color if i == 1 else dark_col
+                pts = [pt(0, off-2), pt(24, off-2), pt(24, off+2), pt(0, off+2)]
+                pygame.draw.polygon(surface, col_v, pts)
+            # Motor block
+            block = [pt(-4, -6), pt(4, -6), pt(4, 6), pt(-4, 6)]
+            pygame.draw.polygon(surface, dark_col, block)
 
     def can_use_mana(self, amount):
         return self.mana >= amount

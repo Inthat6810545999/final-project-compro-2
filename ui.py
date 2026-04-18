@@ -460,7 +460,7 @@ class ClassSelectScreen:
                 sk_mp   = skill.get("mana_cost", 0)
                 sk_desc = skill.get("description", "")
                 text(surface, f"{sk_name}", stat_x + 10, sy, 14, (120, 220, 255), bold=True)
-                text(surface, f"CD:{sk_cd:.1f}s  MP:{sk_mp}",
+                text(surface, f"CD:{int(sk_cd)}s  MP:{sk_mp}",
                      stat_x + 10, sy + 16, 11, ORANGE)
                 sy += 30
                 for chunk in [sk_desc[i:i+48] for i in range(0, len(sk_desc), 48)]:
@@ -648,7 +648,7 @@ class InventoryScreen:
             ry += 18
             text(surface, f"DMG  {wpn.damage}", rx, ry, 13, RED)
             ry += 18
-            text(surface, f"Rate {wpn.fire_rate:.1f}/s", rx, ry, 13, LIGHT_GRAY)
+            text(surface, f"Rate {int(wpn.fire_rate)}/s", rx, ry, 13, LIGHT_GRAY)
             ry += 18
             text(surface, f"Spd  {wpn.bullet_speed}", rx, ry, 13, CYAN)
             ry += 18
@@ -656,11 +656,11 @@ class InventoryScreen:
             text(surface, "— no weapon —", rx, ry, 13, GRAY)
             ry += 18
 
-        text(surface, f"CRIT  {int(player.crit_chance*100)}%  ×{player.crit_mult:.1f}", rx, ry, 13, GOLD)
+        text(surface, f"CRIT  {int(player.crit_chance*100)}%  x{int(player.crit_mult)}", rx, ry, 13, GOLD)
         ry += 18
         text(surface, f"DEF   {player.defense}", rx, ry, 13, LIGHT_GRAY)
         ry += 18
-        text(surface, f"SPD   {player.move_speed:.1f}", rx, ry, 13, GREEN)
+        text(surface, f"SPD   {int(player.move_speed)}", rx, ry, 13, GREEN)
         ry += 18
 
         pygame.draw.line(surface, (40, 40, 70), (rx, ry+4), (rx+rw, ry+4))
@@ -810,7 +810,7 @@ class ShopScreen:
             if hasattr(itm, "damage"):      parts.append(f"DMG {itm.damage}")
             if hasattr(itm, "defense"):     parts.append(f"DEF {itm.defense}")
             if hasattr(itm, "fire_rate") and itm.fire_rate > 0:
-                parts.append(f"Rate {itm.fire_rate:.1f}/s")
+                parts.append(f"Rate {int(itm.fire_rate)}/s")
             sb = getattr(itm, "stat_bonus", {})
             if sb:
                 sb_str = "  ".join(f"+{v}{k}" for k, v in sb.items() if v > 0)
@@ -864,19 +864,62 @@ class ShopScreen:
 # ─────────────────────────────────────────────────────────────
 class PauseScreen:
     def draw(self, surface, mouse_pos):
+        import math, time
+
+        # ── Dimmed overlay ────────────────────────────────────
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 180))
         surface.blit(overlay, (0, 0))
-        text(surface, "PAUSED", SCREEN_W//2, 200, 52, GOLD, bold=True, center=True)
-        bw, bh, bx = 220, 48, SCREEN_W//2 - 110
-        self.btn_resume = button(surface, bx, 290, bw, bh, "RESUME",
-                                 pygame.Rect(bx, 290, bw, bh).collidepoint(mouse_pos), GREEN)
-        self.btn_menu   = button(surface, bx, 356, bw, bh, "MAIN MENU",
-                                 pygame.Rect(bx, 356, bw, bh).collidepoint(mouse_pos), BLUE)
+
+        # ── Card panel ────────────────────────────────────────
+        card_w, card_h = 360, 380
+        card_x = SCREEN_W // 2 - card_w // 2
+        card_y = SCREEN_H // 2 - card_h // 2
+        panel(surface, card_x, card_y, card_w, card_h,
+              fill=(12, 12, 28), border=(80, 80, 160))
+
+        # ── Pulsing title ─────────────────────────────────────
+        pulse = int(math.sin(time.time() * 3) * 6)
+        text(surface, "||  PAUSED", SCREEN_W // 2,
+             card_y + 30 + pulse, 38, GOLD, bold=True, center=True)
+
+        # Divider
+        pygame.draw.line(surface, (60, 60, 120),
+                         (card_x + 24, card_y + 88),
+                         (card_x + card_w - 24, card_y + 88), 2)
+
+        # ── Hint text ─────────────────────────────────────────
+        text(surface, "Press  ESC  to resume", SCREEN_W // 2,
+             card_y + 100, 14, (140, 140, 180), center=True)
+
+        # ── Buttons ───────────────────────────────────────────
+        bw, bh = 280, 52
+        bx = SCREEN_W // 2 - bw // 2
+        gap = 68
+
+        by1 = card_y + 140
+        by2 = by1 + gap
+        by3 = by2 + gap
+
+        h1 = pygame.Rect(bx, by1, bw, bh).collidepoint(mouse_pos)
+        h2 = pygame.Rect(bx, by2, bw, bh).collidepoint(mouse_pos)
+        h3 = pygame.Rect(bx, by3, bw, bh).collidepoint(mouse_pos)
+
+        self.btn_resume  = button(surface, bx, by1, bw, bh, "RESUME",
+                                  h1, (30, 160, 60))
+        self.btn_restart = button(surface, bx, by2, bw, bh, "RESTART",
+                                  h2, (180, 100, 20))
+        self.btn_menu    = button(surface, bx, by3, bw, bh, "EXIT TO MENU",
+                                  h3, (160, 30, 30))
+
+        # ── F11 hint ──────────────────────────────────────────
+        text(surface, "F11 - Toggle Fullscreen", SCREEN_W // 2,
+             card_y + card_h - 28, 13, (100, 100, 140), center=True)
 
     def handle_click(self, pos):
-        if hasattr(self, "btn_resume") and self.btn_resume.collidepoint(pos): return "resume"
-        if hasattr(self, "btn_menu")   and self.btn_menu.collidepoint(pos):   return "menu"
+        if hasattr(self, "btn_resume")  and self.btn_resume.collidepoint(pos):  return "resume"
+        if hasattr(self, "btn_restart") and self.btn_restart.collidepoint(pos): return "restart"
+        if hasattr(self, "btn_menu")    and self.btn_menu.collidepoint(pos):    return "menu"
         return None
 
 

@@ -16,7 +16,8 @@ from constants import (
 class Bullet:
     """Player-fired projectile."""
 
-    def __init__(self, x, y, dx, dy, speed, damage, pierce=False, is_crit=False):
+    def __init__(self, x, y, dx, dy, speed, damage, pierce=False, is_crit=False,
+                 color=None, size=6):
         self.x       = float(x)
         self.y       = float(y)
         self.dx      = dx
@@ -26,32 +27,32 @@ class Bullet:
         self.pierce  = pierce
         self.is_crit = is_crit
         self.alive   = True
-        self.radius  = 6
-        self.hit_set = set()   # enemies already hit (for pierce)
+        self.radius  = size
+        self.color   = color or (255, 230, 80)
+        self.hit_set = set()
 
     def update(self, dt, walls):
         self.x += self.dx * self.speed * 60 * dt
         self.y += self.dy * self.speed * 60 * dt
-
-        # Wall collision
         for wall in walls:
             if wall.collidepoint(self.x, self.y):
                 self.alive = False
                 return
-
-        # FIX: use actual map bounds instead of 3× screen size
         map_w = MAP_W * TILE
         map_h = MAP_H * TILE
         if self.x < 0 or self.x > map_w or self.y < 0 or self.y > map_h:
             self.alive = False
 
     def draw(self, surface, cam_x=0, cam_y=0):
-        sx   = int(self.x - cam_x)
-        sy   = int(self.y - cam_y)
-        col  = GOLD   if self.is_crit else YELLOW
-        col2 = ORANGE if self.is_crit else WHITE
-        pygame.draw.circle(surface, col,  (sx, sy), self.radius)
-        pygame.draw.circle(surface, col2, (sx, sy), self.radius - 3)
+        sx  = int(self.x - cam_x)
+        sy  = int(self.y - cam_y)
+        col = tuple(min(255, c + 80) for c in self.color) if self.is_crit else self.color
+        glow = pygame.Surface((self.radius*4, self.radius*4), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (*col, 60), (self.radius*2, self.radius*2), self.radius*2)
+        surface.blit(glow, (sx - self.radius*2, sy - self.radius*2))
+        pygame.draw.circle(surface, col, (sx, sy), self.radius)
+        core_col = tuple(min(255, c + 100) for c in col)
+        pygame.draw.circle(surface, core_col, (sx, sy), max(1, self.radius - 3))
 
 
 # ─────────────────────────────────────────────────────────────
@@ -170,104 +171,138 @@ def _small_font():
 # ─────────────────────────────────────────────────────────────
 # HUD drawing
 # ─────────────────────────────────────────────────────────────
-def _draw_bar(surface, x, y, w, h, value, maximum, color, back=(20, 20, 30)):
-    pygame.draw.rect(surface, back, (x, y, w, h), border_radius=6)
-    pct    = max(0.0, min(1.0, value / max(1e-6, maximum)))
-    fill_w = int((w - 4) * pct)
-    pygame.draw.rect(surface, color, (x + 2, y + 2, fill_w, h - 4), border_radius=5)
-    pygame.draw.rect(surface, (80, 80, 100), (x, y, w, h), 2, border_radius=6)
+def _draw_heart(surface, cx, cy, size, color):
+    s = size // 2
+    pygame.draw.circle(surface, color, (cx - s//2, cy - s//4), s//2)
+    pygame.draw.circle(surface, color, (cx + s//2, cy - s//4), s//2)
+    points = [(cx - s, cy - s//4), (cx, cy + s), (cx + s, cy - s//4)]
+    pygame.draw.polygon(surface, color, points)
 
+def _draw_shield(surface, cx, cy, size, color):
+    w, h = size, int(size * 1.2)
+    points = [
+        (cx - w//2, cy - h//2), (cx + w//2, cy - h//2),
+        (cx + w//2, cy), (cx, cy + h//2), (cx - w//2, cy),
+    ]
+    pygame.draw.polygon(surface, color, points)
+
+def _draw_diamond(surface, cx, cy, size, color):
+    s = size // 2
+    pygame.draw.polygon(surface, color,
+        [(cx, cy - s), (cx + s, cy), (cx, cy + s), (cx - s, cy)])
+
+def _draw_sk_bar(surface, x, y, w, h, value, maximum, fill_col, back=(10, 10, 20)):
+    pygame.draw.rect(surface, back, (x, y, w, h), border_radius=h//2)
+    pygame.draw.rect(surface, (60, 60, 80), (x, y, w, h), 1, border_radius=h//2)
+    pct    = max(0.0, min(1.0, value / max(1e-6, maximum)))
+    fill_w = max(0, int((w - 4) * pct))
+    if fill_w > 0:
+        pygame.draw.rect(surface, fill_col,
+                         (x + 2, y + 2, fill_w, h - 4), border_radius=(h-4)//2)
+        bright = tuple(min(255, c + 60) for c in fill_col)
+        pygame.draw.rect(surface, bright,
+                         (x + 2, y + 2, fill_w, (h-4)//3), border_radius=(h-4)//2)
 
 def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0.0):
-    """Draw bottom HUD: HP / Armor / Mana bars + skill cooldown + elapsed time."""
     from constants import CLASS_SKILLS
+
+    # TOP-LEFT Soul Knight bars
+    ICON  = 18
+    BAR_W = 150
+    BAR_H = 16
+    PAD   = 6
+    ROW_H = BAR_H + PAD
+    PX, PY = 8, 8
+    PW = ICON + 8 + BAR_W + 6
+    PH = ROW_H * 3 + PAD
+
+    panel_surf = pygame.Surface((PW, PH), pygame.SRCALPHA)
+    panel_surf.fill((0, 0, 0, 130))
+    pygame.draw.rect(panel_surf, (80, 80, 120, 180), (0, 0, PW, PH), 2, border_radius=10)
+    surface.blit(panel_surf, (PX, PY))
+
+    num_font = _font(12)
+    rows = [
+        (_draw_heart,   (220, 50,  50),  player.hp,    player.max_hp),
+        (_draw_shield,  (50,  210, 210), player.armor, player.max_armor),
+        (_draw_diamond, (80,  120, 255), player.mana,  player.max_mana),
+    ]
+    for i, (icon_fn, col, val, maxv) in enumerate(rows):
+        row_y  = PY + PAD + i * ROW_H
+        icon_x = PX + ICON // 2 + 4
+        icon_y = row_y + BAR_H // 2
+        icon_fn(surface, icon_x, icon_y, ICON, col)
+        bar_x = PX + ICON + 10
+        _draw_sk_bar(surface, bar_x, row_y, BAR_W, BAR_H, val, maxv, col)
+        txt = num_font.render(f"{int(val)}/{int(maxv)}", True, WHITE)
+        surface.blit(txt, (bar_x + BAR_W//2 - txt.get_width()//2,
+                           row_y + BAR_H//2 - txt.get_height()//2))
+
+    # BOTTOM HUD strip
     hud_y    = SCREEN_H - HUD_H
     hud_rect = pygame.Rect(0, hud_y, SCREEN_W, HUD_H)
-    pygame.draw.rect(surface, (15, 15, 25), hud_rect)
-    pygame.draw.line(surface, (60, 60, 100), (0, hud_y), (SCREEN_W, hud_y), 2)
+    pygame.draw.rect(surface, (12, 12, 22), hud_rect)
+    pygame.draw.line(surface, (60, 60, 110), (0, hud_y), (SCREEN_W, hud_y), 2)
 
-    lbl_font = _font(14)
-    num_font = _font(13)
     inf_font = _font(14)
 
-    bar_h = 20
-    bar_y = hud_y + 12
-
-    # ── HP bar ───────────────────────────────────────────────
-    x = 14
-    surface.blit(lbl_font.render("HP", True, RED), (x, bar_y + 1))
-    bar_x, bar_w = x + 34, 180
-    _draw_bar(surface, bar_x, bar_y, bar_w, bar_h,
-              player.hp, player.max_hp, RED)
-    hp_txt = num_font.render(f"{int(player.hp)}/{player.max_hp}", True, WHITE)
-    surface.blit(hp_txt, (bar_x + bar_w//2 - hp_txt.get_width()//2, bar_y + 2))
-
-    # ── Armor bar ────────────────────────────────────────────
-    x = bar_x + bar_w + 14
-    surface.blit(lbl_font.render("ARM", True, CYAN), (x, bar_y + 1))
-    bar_x2, bar_w2 = x + 38, 150
-    _draw_bar(surface, bar_x2, bar_y, bar_w2, bar_h,
-              player.armor, player.max_armor, CYAN)
-    arm_txt = num_font.render(f"{int(player.armor)}/{player.max_armor}", True, WHITE)
-    surface.blit(arm_txt, (bar_x2 + bar_w2//2 - arm_txt.get_width()//2, bar_y + 2))
-
-    # ── Mana bar ─────────────────────────────────────────────
-    x = bar_x2 + bar_w2 + 14
-    surface.blit(lbl_font.render("MP", True, LIGHT_BLUE), (x, bar_y + 1))
-    bar_x3, bar_w3 = x + 28, 150
-    _draw_bar(surface, bar_x3, bar_y, bar_w3, bar_h,
-              player.mana, player.max_mana, BLUE)
-    mp_txt = num_font.render(f"{int(player.mana)}/{player.max_mana}", True, WHITE)
-    surface.blit(mp_txt, (bar_x3 + bar_w3//2 - mp_txt.get_width()//2, bar_y + 2))
-
-    # ── Skill button (Q) ─────────────────────────────────────
-    sk_x = bar_x3 + bar_w3 + 18
-    skill_cfg = CLASS_SKILLS.get(player.char_class, {})
+    # Skill button
+    skill_cfg  = CLASS_SKILLS.get(player.char_class, {})
     skill_name = skill_cfg.get("name", "Skill")
     skill_cd   = getattr(player, "skill_cd", 0)
     skill_max  = skill_cfg.get("cooldown", 5.0)
     sk_ready   = (skill_cd <= 0)
-
+    sk_x = 14
     sk_col  = (40, 180, 255) if sk_ready else (50, 50, 80)
     sk_bord = (80, 220, 255) if sk_ready else (80, 80, 120)
     pygame.draw.rect(surface, sk_col,  (sk_x, hud_y + 8, 52, 52), border_radius=8)
     pygame.draw.rect(surface, sk_bord, (sk_x, hud_y + 8, 52, 52), 2, border_radius=8)
-
-    # Cooldown fill overlay
     if not sk_ready:
         fill_h = int(52 * (skill_cd / max(0.01, skill_max)))
-        pygame.draw.rect(surface, (0, 0, 0, 160),
-                         (sk_x, hud_y + 8, 52, fill_h), border_radius=8)
-
-    # Q label
+        cd_overlay = pygame.Surface((52, max(1, fill_h)), pygame.SRCALPHA)
+        cd_overlay.fill((0, 0, 0, 140))
+        surface.blit(cd_overlay, (sk_x, hud_y + 8))
     q_surf = _font(11).render("Q", True, WHITE)
     surface.blit(q_surf, (sk_x + 4, hud_y + 10))
-
-    # Skill name (short)
-    short = skill_name[:7]
-    sn_surf = _font(10).render(short, True, WHITE)
+    sn_surf = _font(10).render(skill_name[:7], True, WHITE)
     surface.blit(sn_surf, (sk_x + 26 - sn_surf.get_width()//2, hud_y + 24))
-
-    # CD number
     if not sk_ready:
-        cd_surf = _font(13, ).render(f"{skill_cd:.1f}", True, YELLOW)
+        cd_surf = _font(13).render(f"{int(skill_cd)}", True, YELLOW)
         surface.blit(cd_surf, (sk_x + 26 - cd_surf.get_width()//2, hud_y + 38))
     else:
         rdy_surf = _font(10).render("READY", True, (80, 255, 80))
         surface.blit(rdy_surf, (sk_x + 26 - rdy_surf.get_width()//2, hud_y + 40))
 
-    # ── Right side info ───────────────────────────────────────
+    # Pause button
+    pb_w, pb_h = 52, 52
+    pb_x = SCREEN_W - pb_w - 14
+    pb_y = hud_y + 8
+    pb_rect   = pygame.Rect(pb_x, pb_y, pb_w, pb_h)
+    mouse_pos = pygame.mouse.get_pos()
+    pb_hover  = pb_rect.collidepoint(mouse_pos)
+    pb_fill   = (80, 80, 120) if pb_hover else (40, 40, 70)
+    pb_border = (160, 160, 220) if pb_hover else (90, 90, 140)
+    pygame.draw.rect(surface, pb_fill,   pb_rect, border_radius=8)
+    pygame.draw.rect(surface, pb_border, pb_rect, 2, border_radius=8)
+    bar_col = WHITE if pb_hover else (180, 180, 220)
+    pygame.draw.rect(surface, bar_col, (pb_x + 14, pb_y + 13, 8, 26), border_radius=2)
+    pygame.draw.rect(surface, bar_col, (pb_x + 30, pb_y + 13, 8, 26), border_radius=2)
+    esc_s = _font(9).render("ESC", True, (160, 160, 200))
+    surface.blit(esc_s, (pb_x + pb_w//2 - esc_s.get_width()//2, pb_y + pb_h - 13))
+
+    # Right info
     mins = int(run_time) // 60
     secs = int(run_time) % 60
     time_str = f"{mins:02d}:{secs:02d}"
-
     right_lines = [
-        (f"Stage {current_stage_idx+1}/{total_stages}",  (180, 180, 220)),
-        (f"Lv.{player.level}   {player.gold}G",         GOLD),
-        (f"⏱ {time_str}",                                (160, 220, 160)),
+        (f"Stage {current_stage_idx+1}/{total_stages}", (180, 180, 220)),
+        (f"Lv.{player.level}   {player.gold}G",        GOLD),
+        (f"  {time_str}",                               (160, 220, 160)),
     ]
     ry = hud_y + 6
     for line, col in right_lines:
         s = inf_font.render(line, True, col)
-        surface.blit(s, (SCREEN_W - s.get_width() - 14, ry))
+        surface.blit(s, (SCREEN_W - pb_w - 24 - s.get_width(), ry))
         ry += 22
+
+    return pb_rect

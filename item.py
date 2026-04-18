@@ -78,7 +78,7 @@ class Weapon(Item):
     """Ranged or melee weapon."""
 
     def __init__(self, name, damage, fire_rate, bullet_speed, rarity, color,
-                 description, weapon_class="Any", stat_bonus=None):
+                 description, weapon_class="Any", stat_bonus=None, effect=None):
         price = {"Common": 25, "Rare": 70, "Epic": 160, "Legendary": 380}.get(rarity, 25)
         super().__init__(name, "weapon", rarity, color, description, price)
         self.damage       = damage
@@ -87,6 +87,14 @@ class Weapon(Item):
         self.is_melee     = (fire_rate == 0)
         self.weapon_class = weapon_class
         self.stat_bonus   = stat_bonus or {}
+        self.effect       = effect or {
+            "pattern":      "single",
+            "bullet_color": (255, 230, 80),
+            "bullet_size":  5,
+            "gun_shape":    "pistol",
+            "gun_color":    (160, 160, 180),
+            "pierce":       False,
+        }
 
     def can_equip(self, player):
         # Soul Knight style: any character can pick up any weapon
@@ -147,31 +155,36 @@ class Accessory(Item):
 
 def make_starting_weapon(char_class):
     """Return the starter gun for a given class."""
+    _pistol_fx  = {"pattern":"single",  "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",  "gun_color":(160,160,180), "pierce":False}
+    _smg_fx     = {"pattern":"single",  "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",     "gun_color":(40,120,160),  "pierce":False}
+    _rifle_fx   = {"pattern":"single",  "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",   "gun_color":(60,100,40),   "pierce":False}
+    _plasma_fx  = {"pattern":"pierce",  "bullet_color":(0,220,255),   "bullet_size":6,  "gun_shape":"pistol",  "gun_color":(0,100,140),   "pierce":True}
+
     if char_class == "Mage":
-        return Weapon("Magic Wand",  16, 0.55, 9,  "Common", (100, 180, 255),
-                      "Pierces 1 enemy", "Any", {})
+        return Weapon("Plasma Pistol", 16, 0.55, 9,  "Common", (100,180,255),
+                      "Pierces 1 enemy", "Any", {}, _plasma_fx)
     elif char_class == "Necromancer":
-        return Weapon("Soul Staff",  14, 0.60, 8,  "Common", (60, 220, 120),
-                      "Dark bolts", "Any", {})
+        return Weapon("Dart Gun",      14, 0.60, 8,  "Common", (60,220,120),
+                      "Dark bolts",    "Any", {}, {**_pistol_fx, "bullet_color":(80,220,120), "gun_color":(40,120,60)})
     elif char_class == "Ranger":
-        return Weapon("Short Bow",   15, 0.70, 11, "Common", (139, 90, 43),
-                      "Fast arrows", "Any", {})
-    else:  # Rogue
-        return Weapon("Hand Pistol", 13, 0.80, 10, "Common", (160, 160, 180),
-                      "Rapid fire", "Any", {})
+        return Weapon("Hunting Rifle", 15, 0.70, 11, "Common", (139,90,43),
+                      "Accurate shots","Any", {}, _rifle_fx)
+    else:
+        return Weapon("Hand Pistol",   13, 0.80, 10, "Common", (160,160,180),
+                      "Rapid fire",   "Any", {}, _pistol_fx)
 
 
 def make_weapon(rarity="Common", weapon_class=None):
     """Pick a random ranged Weapon from WEAPON_POOL matching rarity."""
-    pool = [w for w in WEAPON_POOL if w[4] == rarity and w[2] > 0]  # only ranged (fire_rate > 0)
+    pool = [w for w in WEAPON_POOL if w[4] == rarity and w[2] > 0]
     if not pool:
-        pool = [w for w in WEAPON_POOL if w[2] > 0]  # fallback: any ranged
+        pool = [w for w in WEAPON_POOL if w[2] > 0]
     if not pool:
         pool = WEAPON_POOL
     entry = random.choice(pool)
-    # Force weapon_class to "Any" — Soul Knight style
+    effect = entry[9] if len(entry) > 9 else None
     return Weapon(entry[0], entry[1], entry[2], entry[3],
-                  entry[4], entry[5], entry[6], "Any", entry[8])
+                  entry[4], entry[5], entry[6], "Any", entry[8], effect)
 
 
 def make_armor(rarity="Common"):

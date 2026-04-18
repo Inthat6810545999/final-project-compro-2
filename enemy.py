@@ -141,7 +141,7 @@ class Enemy:
         if self.hp <= 0:
             self.hp    = 0
             self.alive = False
-        return amount
+        return int(amount)
 
     def drop_loot(self, luk_bonus=0):
         drop_chance = 0.40 + luk_bonus * 0.01

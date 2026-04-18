@@ -3,7 +3,7 @@ constants.py  –  All game-wide constants and configuration
 """
 
 # ── Screen ────────────────────────────────────────────────────
-SCREEN_W, SCREEN_H = 1920, 1080
+SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 TITLE = "Sausage Man: Legends of Midgard"
 
@@ -151,34 +151,65 @@ ENEMY_DATA = {
 # ── Item pools ───────────────────────────────────────────────
 # (name, dmg, fire_rate, bullet_speed, rarity, color, desc, weapon_class, stat_bonus)
 WEAPON_POOL = [
+    # Format: (name, dmg, fire_rate, bullet_spd, rarity, color, desc, class, stat_bonus, effect)
+    # effect = {pattern, bullet_color, bullet_size, gun_shape, gun_color, pierce}
+    # patterns: single | spread3 | spread5 | double | pierce | spread_random | burst3
+
     # ── COMMON ─────────────────────────────────────────────────────
-    ("Magic Wand",      16, 0.55, 9,  "Common",    LIGHT_BLUE, "Pierces 1 enemy",            "Any", {}),
-    ("Short Bow",       15, 0.65, 10, "Common",    BROWN,      "Fast light arrows",           "Any", {}),
-    ("Hand Pistol",     14, 0.80, 11, "Common",    LIGHT_GRAY, "Rapid-fire pistol",           "Any", {}),
-    ("Soul Staff",      15, 0.60, 8,  "Common",    GREEN,      "Dark energy bolts",           "Any", {}),
-    ("Fire Wand",       20, 0.50, 8,  "Common",    ORANGE,     "Flaming shots",               "Any", {}),
-    ("Hunter Bow",      19, 0.55, 9,  "Common",    BROWN,      "Sturdy hunting bow",          "Any", {}),
+    ("Hand Pistol",   14, 0.80, 11, "Common", LIGHT_GRAY, "Rapid single shots",        "Any", {},
+     {"pattern":"single",       "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,160,180), "pierce":False}),
+    ("Revolver",      18, 0.50, 10, "Common", GOLD,       "Heavy slow pistol",         "Any", {},
+     {"pattern":"single",       "bullet_color":(255,200,50),  "bullet_size":7,  "gun_shape":"revolver", "gun_color":(180,140,40),  "pierce":False}),
+    ("SMG",           10, 1.80, 13, "Common", CYAN,       "Ultra-rapid small shots",   "Any", {},
+     {"pattern":"single",       "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",      "gun_color":(40,120,160),  "pierce":False}),
+    ("Sawed-Off",     20, 0.40, 8,  "Common", ORANGE,     "3-bullet shotgun spread",   "Any", {},
+     {"pattern":"spread3",      "bullet_color":(255,140,40),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(120,80,30),   "pierce":False}),
+    ("Hunting Rifle", 22, 0.45, 14, "Common", BROWN,      "Accurate single shot",      "Any", {},
+     {"pattern":"single",       "bullet_color":(200,160,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(100,60,20),   "pierce":False}),
+    ("Flare Gun",     16, 0.35, 7,  "Common", ORANGE,     "Slow burning flare",        "Any", {},
+     {"pattern":"single",       "bullet_color":(255,80,20),   "bullet_size":9,  "gun_shape":"pistol",   "gun_color":(160,80,40),   "pierce":False}),
+
     # ── RARE ───────────────────────────────────────────────────────
-    ("Ice Staff",       30, 0.50, 9,  "Rare",      CYAN,       "Slowing ice shards",          "Any", {}),
-    ("Fire Staff",      36, 0.50, 9,  "Rare",      ORANGE,     "Burn on every hit",           "Any", {}),
-    ("Long Bow",        28, 0.60, 10, "Rare",      GOLD,       "High-power bow",              "Any", {}),
-    ("Crossbow",        34, 0.55, 11, "Rare",      GRAY,       "Armor-piercing bolts",        "Any", {}),
-    ("Plasma Rifle",    32, 0.70, 12, "Rare",      CYAN,       "Rapid plasma shots",          "Any", {}),
-    ("Shadow Dart",     26, 0.85, 13, "Rare",      PURPLE,     "Silent poison darts",         "Any", {}),
+    ("AK-47",         24, 0.90, 13, "Rare",   GREEN,      "High fire rate rifle",      "Any", {},
+     {"pattern":"single",       "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(50,100,30),   "pierce":False}),
+    ("Shotgun",       28, 0.35, 9,  "Rare",   GRAY,       "5-bullet wide spread",      "Any", {},
+     {"pattern":"spread5",      "bullet_color":(220,180,80),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(80,80,80),    "pierce":False}),
+    ("Sniper Rifle",  40, 0.28, 22, "Rare",   LIGHT_GRAY, "Ultra-fast piercing shot",  "Any", {},
+     {"pattern":"pierce",       "bullet_color":(255,255,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(60,60,70),    "pierce":True}),
+    ("Plasma Pistol", 30, 0.65, 14, "Rare",   CYAN,       "Glowing plasma bolts",      "Any", {},
+     {"pattern":"single",       "bullet_color":(0,220,255),   "bullet_size":7,  "gun_shape":"pistol",   "gun_color":(0,120,160),   "pierce":False}),
+    ("Dual Pistols",  20, 0.70, 12, "Rare",   GOLD,       "Fires 2 bullets at once",   "Any", {},
+     {"pattern":"double",       "bullet_color":(255,220,60),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,120,30),  "pierce":False}),
+    ("Dart Gun",      26, 0.85, 13, "Rare",   PURPLE,     "Silent poison darts",       "Any", {},
+     {"pattern":"single",       "bullet_color":(180,60,220),  "bullet_size":4,  "gun_shape":"pistol",   "gun_color":(80,30,120),   "pierce":False}),
+
     # ── EPIC ───────────────────────────────────────────────────────
-    ("Chaos Staff",     52, 0.60, 10, "Epic",      PURPLE,     "Chaos energy blasts",         "Any", {}),
-    ("Thunder Staff",   62, 0.65, 11, "Epic",      CYAN,       "Chain lightning",             "Any", {}),
-    ("Thunder Bow",     46, 0.70, 13, "Epic",      CYAN,       "Electric pierce arrows",      "Any", {}),
-    ("Sniper Bow",      58, 0.40, 17, "Epic",      GREEN,      "High-crit long-range",        "Any", {}),
-    ("Laser Cannon",    55, 0.50, 15, "Epic",      LIGHT_BLUE, "Focused laser beam",          "Any", {}),
-    ("Gatling Wand",    28, 1.30, 11, "Epic",      YELLOW,     "Spray magic bullets fast",    "Any", {}),
+    ("Grenade Launcher",52, 0.40, 8,"Epic",   ORANGE,     "Slow heavy explosive shot", "Any", {},
+     {"pattern":"single",       "bullet_color":(255,100,0),   "bullet_size":12, "gun_shape":"launcher", "gun_color":(120,60,20),   "pierce":False}),
+    ("Lightning Gun", 60, 0.60, 13, "Epic",   CYAN,       "Piercing electric bolt",    "Any", {},
+     {"pattern":"pierce",       "bullet_color":(100,220,255), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(20,80,120),   "pierce":True}),
+    ("Railgun Mk1",   65, 0.30, 24, "Epic",   LIGHT_BLUE, "Hyper-fast armor-piercing", "Any", {},
+     {"pattern":"pierce",       "bullet_color":(180,230,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(30,60,100),   "pierce":True}),
+    ("Assault Rifle", 28, 1.10, 14, "Epic",   GREEN,      "3-shot burst each trigger", "Any", {},
+     {"pattern":"burst3",       "bullet_color":(150,255,100), "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(40,80,30),    "pierce":False}),
+    ("Laser Rifle",   55, 0.50, 20, "Epic",   RED,        "Thin fast laser beam",      "Any", {},
+     {"pattern":"pierce",       "bullet_color":(255,50,50),   "bullet_size":3,  "gun_shape":"sniper",   "gun_color":(120,20,20),   "pierce":True}),
+    ("Minigun",       18, 2.20, 12, "Epic",   YELLOW,     "Insane fire rate spray",    "Any", {},
+     {"pattern":"spread_random","bullet_color":(255,240,80),  "bullet_size":4,  "gun_shape":"minigun",  "gun_color":(100,100,40),  "pierce":False}),
+
     # ── LEGENDARY ──────────────────────────────────────────────────
-    ("Void Staff",      88, 0.70, 13, "Legendary", PURPLE,     "Tears reality — pierces all", "Any", {}),
-    ("Arcane Catalyst", 102,0.75, 13, "Legendary", LIGHT_BLUE, "Double-cast arcane blasts",   "Any", {}),
-    ("Dragon Bow",      78, 0.80, 15, "Legendary", RED,        "Exploding fire arrows",       "Any", {}),
-    ("Wind Bow",        92, 0.95, 17, "Legendary", CYAN,       "Fires 2 arrows per shot",     "Any", {}),
-    ("Railgun",         120,0.30, 22, "Legendary", LIGHT_BLUE, "Hyper-velocity round",        "Any", {}),
-    ("Infinity Wand",   95, 0.85, 14, "Legendary", GOLD,       "Unlimited magical energy",    "Any", {}),
+    ("Void Cannon",   90, 0.60, 14, "Legendary", PURPLE,     "Huge void orb, pierces all","Any", {},
+     {"pattern":"pierce",       "bullet_color":(180,0,255),   "bullet_size":14, "gun_shape":"launcher", "gun_color":(80,0,120),    "pierce":True}),
+    ("Twin Blaster",  100,0.70, 14, "Legendary", LIGHT_BLUE, "2 massive energy bolts",   "Any", {},
+     {"pattern":"double",       "bullet_color":(80,180,255),  "bullet_size":10, "gun_shape":"launcher", "gun_color":(30,80,160),   "pierce":False}),
+    ("Dragon Cannon", 80, 0.70, 13, "Legendary", RED,        "3 exploding fire shots",   "Any", {},
+     {"pattern":"spread3",      "bullet_color":(255,60,0),    "bullet_size":11, "gun_shape":"launcher", "gun_color":(140,30,0),    "pierce":False}),
+    ("Wind Striker",  90, 0.90, 18, "Legendary", CYAN,       "Triple rapid shots",        "Any", {},
+     {"pattern":"burst3",       "bullet_color":(150,255,220), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(30,140,120),  "pierce":False}),
+    ("Railgun Mk2",   120,0.28, 28, "Legendary", LIGHT_BLUE, "Pierces entire map",        "Any", {},
+     {"pattern":"pierce",       "bullet_color":(220,240,255), "bullet_size":5,  "gun_shape":"sniper",   "gun_color":(20,40,80),    "pierce":True}),
+    ("Infinity Blaster",95,0.85,15, "Legendary", GOLD,       "Endless golden double fire","Any", {},
+     {"pattern":"double",       "bullet_color":(255,200,0),   "bullet_size":9,  "gun_shape":"launcher", "gun_color":(140,100,0),   "pierce":True}),
 ]
 
 ARMOR_POOL = [

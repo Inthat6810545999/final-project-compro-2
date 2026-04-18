@@ -36,10 +36,11 @@ class GameManager:
     """Central game controller."""
 
     def __init__(self, screen):
-        self.screen  = screen
-        self.clock   = pygame.time.Clock()
-        self.state   = STATE_MENU
-        self.running = True
+        self.screen      = screen
+        self.clock       = pygame.time.Clock()
+        self.state       = STATE_MENU
+        self.running     = True
+        self._fullscreen = False
 
         self.tracker = StatsTracker()
 
@@ -114,6 +115,16 @@ class GameManager:
         elif key == pygame.K_q:
             if self.state == STATE_PLAYING:
                 self._use_skill()
+
+        elif key == pygame.K_F11:
+            self._toggle_fullscreen()
+
+    def _toggle_fullscreen(self):
+        self._fullscreen = not self._fullscreen
+        if self._fullscreen:
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
 
     def _use_skill(self):
         """Trigger the active character skill (Q key)."""
@@ -266,6 +277,13 @@ class GameManager:
             self._add_fx(p.x, p.y - 50, f"SMOKE DASH! ({hit} hit)", (80, 160, 255), 22)
 
     def _on_click(self, pos, button):
+        if self.state == STATE_PLAYING:
+            # HUD pause button click
+            pb = getattr(self, "_hud_pause_btn", None)
+            if pb and pb.collidepoint(pos):
+                self.change_state(STATE_PAUSED)
+                return
+
         if self.state == STATE_MENU:
             result = self.menu_screen.handle_click(pos)
             if result == "play":
@@ -289,6 +307,8 @@ class GameManager:
             result = self.pause_screen.handle_click(pos)
             if result == "resume":
                 self.change_state(STATE_PLAYING)
+            elif result == "restart":
+                self._restart_game()
             elif result == "menu":
                 self.change_state(STATE_MENU)
 
@@ -314,6 +334,12 @@ class GameManager:
         self.state = new_state
 
     # ── New game ─────────────────────────────────────────────
+    def _restart_game(self):
+        """Restart with the same class from stage 1."""
+        if self.player:
+            char_class = self.player.char_class
+            self._start_new_game(char_class)
+
     def _start_new_game(self, char_class):
         self.player    = Player(self.player_name, char_class)
         self.stage_idx = 0
@@ -338,8 +364,19 @@ class GameManager:
 
     # ── Item pickup ──────────────────────────────────────────
     def _try_pickup(self):
-        """Soul Knight-style pickup: swap weapons on the ground, equip better gear."""
+        """Soul Knight-style pickup: swap weapons on the ground, equip better gear.
+        Also handles health fountain interaction."""
         p = self.player
+
+        # ── Fountain interaction (E near fountain) ────────────
+        cur_room = self.stage.get_room_at(p.x, p.y)
+        if cur_room and cur_room.near_fountain(p):
+            healed = cur_room.use_fountain(p)
+            if healed > 0:
+                self._add_fx(p.x, p.y - 40, f"+{healed} HP", (255, 80, 80), 22)
+                self._add_fx(p.x, p.y - 65, "HEALED!", (255, 160, 160), 16)
+            return
+
         best_drop = None
         best_dist = 9999
         for d in self.drops:
@@ -360,11 +397,10 @@ class GameManager:
         p.equip(itm)
 
         if old is not None:
-            # Drop the old item at the pickup spot
             self.drops.append(DroppedItem(old, best_drop.x + 20, best_drop.y + 20))
             from constants import RARITY_COLORS
             col = RARITY_COLORS.get(itm.rarity, WHITE)
-            self._add_fx(p.x, p.y - 30, f"↔ SWAP → {itm.name}!", col, 17)
+            self._add_fx(p.x, p.y - 30, f"SWAP -> {itm.name}!", col, 17)
         else:
             from constants import RARITY_COLORS
             col = RARITY_COLORS.get(itm.rarity, WHITE)
@@ -414,6 +450,25 @@ class GameManager:
         # Player update (includes movement + regen)
         p.update(dt, walls, world_mouse)
         self.stage.update_camera(p.x, p.y)
+        self.stage.update(dt)
+
+        # ── Room door / fountain management ───────────────────
+        cur_room = self.stage.get_room_at(p.x, p.y)
+        if cur_room:
+            alive_in_room = cur_room.enemies_alive_in(self.enemies)
+            if alive_in_room:
+                # FIX: only close doors once player has fully cleared the
+                # door tiles (not still standing in the doorway).
+                player_in_doorway = any(
+                    dr.inflate(p.RADIUS * 2, p.RADIUS * 2).collidepoint(p.x, p.y)
+                    for dr in cur_room.door_rects
+                )
+                if not player_in_doorway:
+                    self.stage.close_room_doors(cur_room)
+            else:
+                if not cur_room.doors_open:
+                    self.stage.open_room_doors(cur_room)
+                cur_room.cleared = True
 
         # ── Shooting / melee input ────────────────────────────
         # FIX: shoot_cooldown always ticks — moved outside if/else
@@ -537,7 +592,7 @@ class GameManager:
             self.class_screen.draw(self.screen, mouse_pos, self.clock.get_time() / 1000.0)
 
         elif self.state == STATE_PLAYING:
-            self.stage.draw(self.screen)
+            self.stage.draw(self.screen, player=self.player)
             for e in self.enemies:
                 e.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             for d in self.drops:
@@ -549,13 +604,13 @@ class GameManager:
             for f in self.fx:
                 f.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             self.player.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
-            draw_hud(self.screen, self.player, self.stage,
+            self._hud_pause_btn = draw_hud(self.screen, self.player, self.stage,
                      self.stage_idx, len(STAGE_CONFIGS), self.run_time)
             self.stage.draw_minimap(self.screen, self.player.x, self.player.y)
 
         elif self.state == STATE_INVENTORY:
             # Draw game behind inventory
-            self.stage.draw(self.screen)
+            self.stage.draw(self.screen, player=self.player)
             self.player.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             draw_hud(self.screen, self.player, self.stage,
                      self.stage_idx, len(STAGE_CONFIGS), self.run_time)
@@ -566,7 +621,7 @@ class GameManager:
             self.shop_screen.draw(self.screen, self.player, mouse_pos)
 
         elif self.state == STATE_PAUSED:
-            self.stage.draw(self.screen)
+            self.stage.draw(self.screen, player=self.player)
             self.pause_screen.draw(self.screen, mouse_pos)
 
         elif self.state in (STATE_GAME_OVER, STATE_VICTORY):
