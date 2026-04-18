@@ -169,6 +169,65 @@ def _small_font():
 
 
 # ─────────────────────────────────────────────────────────────
+class Portal:
+    """Warp portal that spawns on last enemy killed — walk into it to proceed."""
+
+    RADIUS = 30
+
+    def __init__(self, x, y):
+        self.x     = float(x)
+        self.y     = float(y)
+        self.alive = True
+        self._bob  = 0.0
+
+    def update(self, dt):
+        self._bob += dt * 2.2
+
+    def can_enter(self, player):
+        return math.hypot(self.x - player.x, self.y - player.y) < self.RADIUS + player.RADIUS
+
+    def draw(self, surface, cam_x=0, cam_y=0):
+        t  = self._bob
+        sx = int(self.x - cam_x)
+        sy = int(self.y - cam_y) + int(math.sin(t) * 5)
+        r  = self.RADIUS
+
+        # Outer pulsing glow
+        glow_r = r + 14 + int(math.sin(t * 2.8) * 6)
+        glow   = pygame.Surface((glow_r*2+4, glow_r*2+4), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (140, 0, 255, 70), (glow_r+2, glow_r+2), glow_r)
+        surface.blit(glow, (sx - glow_r - 2, sy - glow_r - 2))
+
+        # Portal body
+        pygame.draw.circle(surface, (45, 0, 110), (sx, sy), r)
+        pygame.draw.circle(surface, (190, 80, 255), (sx, sy), r, 4)
+
+        # Inner spinning ring
+        ring_r = r - 8
+        pygame.draw.circle(surface, (230, 160, 255), (sx, sy), ring_r, 2)
+
+        # 6 rotating energy spokes
+        for i in range(6):
+            a = t * 1.8 + i * math.pi / 3
+            ex = sx + int(math.cos(a) * (r - 5))
+            ey = sy + int(math.sin(a) * (r - 5))
+            pygame.draw.line(surface, (210, 110, 255), (sx, sy), (ex, ey), 2)
+
+        # "PORTAL" label above
+        lbl = _font(13).render("PORTAL", True, (240, 200, 255))
+        surface.blit(lbl, (sx - lbl.get_width()//2, sy - r - 22))
+
+        # Pulsing "E" badge
+        pulse = int(math.sin(t * 5) * 3)
+        bx, by = sx + r + 2, sy - 13
+        badge  = pygame.Rect(bx - 2, by - 2, 22 + pulse, 22 + pulse)
+        pygame.draw.rect(surface, (20, 10, 35),  badge, border_radius=4)
+        pygame.draw.rect(surface, GOLD,           badge, 2, border_radius=4)
+        e_s = _font(13).render("E", True, GOLD)
+        surface.blit(e_s, (bx + 3, by + 1))
+
+
+# ─────────────────────────────────────────────────────────────
 # HUD drawing
 # ─────────────────────────────────────────────────────────────
 def _draw_heart(surface, cx, cy, size, color):

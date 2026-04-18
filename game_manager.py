@@ -26,7 +26,7 @@ from constants import (
 from player        import Player
 from stage         import Stage
 from enemy         import EnemyBullet
-from bullet        import Bullet, DroppedItem, FloatingText, draw_hud
+from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal
 from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
                            ShopScreen, PauseScreen, GameOverScreen)
@@ -56,6 +56,12 @@ class GameManager:
         self.score    = 0
         self.kills    = 0
         self.run_time = 0.0   # seconds elapsed this run
+
+        # ── New features ──────────────────────────────────────
+        self.portal          = None          # Portal object after stage cleared
+        self._last_enemy_pos = (640, 360)    # position of last enemy killed
+        self.shake_timer     = 0.0           # screen-shake duration remaining
+        self.shake_mag       = 0             # shake magnitude in pixels
 
         self.menu_screen  = MainMenuScreen(self.tracker)
         self.class_screen = ClassSelectScreen()
@@ -361,6 +367,8 @@ class GameManager:
         self.e_bullets = []
         self.drops     = []
         self.fx        = []
+        self.portal    = None   # clear portal from previous stage
+        self._last_enemy_pos = (float(start_room.cx), float(start_room.cy))
         # Assign each enemy a home_room so they stay in their own room
         for e in self.enemies:
             e.home_room = self.stage.get_room_at(e.x, e.y)
@@ -529,6 +537,11 @@ class GameManager:
         if p.shoot_cooldown > 0:
             p.shoot_cooldown -= dt
 
+        # ── Shooting / melee input ────────────────────────────
+        # FIX: shoot_cooldown always ticks — moved outside if/else
+        if p.shoot_cooldown > 0:
+            p.shoot_cooldown -= dt
+
         mouse_pressed = pygame.mouse.get_pressed()
         if mouse_pressed[0]:
             wpn = p.weapon
@@ -546,9 +559,21 @@ class GameManager:
                     p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
 
         # ── Player bullets ────────────────────────────────────
+        # Figure out which room the player is currently in (may be None = corridor)
+        player_room = self.stage.get_room_at(p.x, p.y)
+
         for b in list(self.bullets):
             b.update(dt, walls)
             if not b.alive:
+                self.bullets.remove(b)
+                continue
+
+            # ── ROOM BARRIER: bullet enters a room the player isn't in → stop ──
+            bullet_room = self.stage.get_room_at(b.x, b.y)
+            if bullet_room is not None and bullet_room is not player_room:
+                # Spawn a small spark effect at the boundary and kill the bullet
+                self._add_fx(b.x, b.y, "✕", (180, 120, 60), 14)
+                b.alive = False
                 self.bullets.remove(b)
                 continue
             # FIX: bullet → enemy collision
@@ -586,11 +611,20 @@ class GameManager:
                     self._add_fx(p.x, p.y - 30, "DODGE!", CYAN, 20)
                 elif dmg > 0:
                     self._add_fx(p.x, p.y - 30, f"-{dmg}", RED, 18)
+                    # ── Screen shake ──────────────────────────
+                    self.shake_timer = 0.28
+                    self.shake_mag   = 7
+                    # ── Fire rate boost (Adrenaline!) ─────────
+                    if not getattr(p, '_fire_boost_timer', 0) > 0:
+                        p.aspd_mult = getattr(p, 'aspd_mult', 1.0) * 1.6
+                    p._fire_boost_timer = 3.5
+                    self._add_fx(p.x, p.y - 52, "ADRENALINE!", (255, 180, 50), 15)
 
         # ── Enemy update + death ──────────────────────────────
         for e in list(self.enemies):
             e.update(p, walls, dt, self.e_bullets)
             if not e.alive:
+                self._last_enemy_pos = (e.x, e.y)   # track for portal spawn
                 gold_drop = random.randint(2, 6 + self.stage_idx)
                 if p.char_class == "Rogue":
                     gold_drop = int(gold_drop * 1.3)
@@ -617,11 +651,28 @@ class GameManager:
         for d in list(self.drops):
             d.update(dt)
 
+        # ── Portal update & enter ─────────────────────────────
+        if self.portal:
+            self.portal.update(dt)
+            if self.portal.can_enter(p):
+                self.portal = None
+                self._open_shop()
+
         # ── Floating text ─────────────────────────────────────
         for f in list(self.fx):
             f.update(dt)
             if not f.alive:
                 self.fx.remove(f)
+
+        # ── Screen-shake tick ─────────────────────────────────
+        if self.shake_timer > 0:
+            self.shake_timer = max(0.0, self.shake_timer - dt)
+
+        # ── Fire-rate boost tick ───────────────────────────────
+        if hasattr(p, '_fire_boost_timer') and p._fire_boost_timer > 0:
+            p._fire_boost_timer -= dt
+            if p._fire_boost_timer <= 0:
+                p.aspd_mult = max(1.0, p.aspd_mult / 1.6)
 
         # ── Player death ──────────────────────────────────────
         if not p.alive:
@@ -629,11 +680,12 @@ class GameManager:
             self.tracker.end_run("death", p)
             self.change_state(STATE_GAME_OVER)
 
-        # ── Stage completion ──────────────────────────────────
-        # FIX: poll completion every frame and open shop when done
-        if self.enemies == [] and self.state == STATE_PLAYING:
-            if self.stage.check_completion([]):   # empty list = always complete
-                self._open_shop()
+        # ── Stage completion: spawn portal on last enemy ───────
+        if self.enemies == [] and self.state == STATE_PLAYING and self.portal is None:
+            if self.stage.check_completion([]):
+                px, py = self._last_enemy_pos
+                self.portal = Portal(px, py)
+                self._add_fx(px, py - 50, "PORTAL OPENED!", (200, 120, 255), 22)
 
     # ── Render ───────────────────────────────────────────────
     def _render(self, mouse_pos):
@@ -646,6 +698,20 @@ class GameManager:
             self.class_screen.draw(self.screen, mouse_pos, self.clock.get_time() / 1000.0)
 
         elif self.state == STATE_PLAYING:
+            # ── Screen shake offset ───────────────────────────
+            import random as _rnd2
+            sk_ox = sk_oy = 0
+            if self.shake_timer > 0:
+                m = int(self.shake_mag * (self.shake_timer / 0.28))
+                sk_ox = _rnd2.randint(-m, m)
+                sk_oy = _rnd2.randint(-m, m)
+
+            # Draw everything to main surface (cam already shifted by shake)
+            orig_cam_x = self.stage.cam_x
+            orig_cam_y = self.stage.cam_y
+            self.stage.cam_x += sk_ox
+            self.stage.cam_y += sk_oy
+
             self.stage.draw(self.screen, player=self.player)
             for e in self.enemies:
                 e.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
@@ -657,7 +723,13 @@ class GameManager:
                 eb.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             for f in self.fx:
                 f.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
+            if self.portal:
+                self.portal.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             self.player.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
+
+            self.stage.cam_x = orig_cam_x
+            self.stage.cam_y = orig_cam_y
+
             self._hud_pause_btn = draw_hud(self.screen, self.player, self.stage,
                      self.stage_idx, len(STAGE_CONFIGS), self.run_time)
             self.stage.draw_minimap(self.screen, self.player.x, self.player.y)
