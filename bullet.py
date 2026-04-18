@@ -316,7 +316,25 @@ def _draw_sk_bar(surface, x, y, w, h, value, maximum, fill_col, back=(10, 10, 20
 def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0.0):
     from constants import CLASS_SKILLS
 
-    # TOP-LEFT Soul Knight bars
+    # ── Frenzy screen border effect ───────────────────────────
+    frenzy_active = getattr(player, '_frenzy_timer', 0) > 0
+    if frenzy_active:
+        ft = player._frenzy_timer
+        pulse = abs(math.sin(ft * 8)) * 80
+        border_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        for bw in range(1, 14):
+            alpha = int((14 - bw) * 4 + pulse * 0.3)
+            pygame.draw.rect(border_surf, (255, 120, 0, alpha),
+                             (bw, bw, SCREEN_W - bw*2, SCREEN_H - bw*2), 2)
+        surface.blit(border_surf, (0, 0))
+        # Frenzy timer bar at top
+        bar_w = int((SCREEN_W - 40) * (ft / 3.0))
+        pygame.draw.rect(surface, (80, 30, 0),  (20, 4, SCREEN_W - 40, 8), border_radius=4)
+        pygame.draw.rect(surface, (255, 140, 0), (20, 4, bar_w, 8), border_radius=4)
+        label = _font(11).render("⚡ FRENZY", True, (255, 200, 80))
+        surface.blit(label, (SCREEN_W // 2 - label.get_width() // 2, 14))
+
+    # ── TOP-LEFT: HP / Armor / Mana bars ─────────────────────
     ICON  = 18
     BAR_W = 150
     BAR_H = 16
@@ -348,7 +366,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
         surface.blit(txt, (bar_x + BAR_W//2 - txt.get_width()//2,
                            row_y + BAR_H//2 - txt.get_height()//2))
 
-    # BOTTOM HUD strip
+    # ── BOTTOM HUD strip ──────────────────────────────────────
     hud_y    = SCREEN_H - HUD_H
     hud_rect = pygame.Rect(0, hud_y, SCREEN_W, HUD_H)
     pygame.draw.rect(surface, (12, 12, 22), hud_rect)
@@ -356,34 +374,78 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
 
     inf_font = _font(14)
 
-    # Skill button
-    skill_cfg  = CLASS_SKILLS.get(player.char_class, {})
-    skill_name = skill_cfg.get("name", "Skill")
-    skill_cd   = getattr(player, "skill_cd", 0)
-    skill_max  = skill_cfg.get("cooldown", 5.0)
-    sk_ready   = (skill_cd <= 0)
-    sk_x = 14
-    sk_col  = (40, 180, 255) if sk_ready else (50, 50, 80)
-    sk_bord = (80, 220, 255) if sk_ready else (80, 80, 120)
-    pygame.draw.rect(surface, sk_col,  (sk_x, hud_y + 8, 52, 52), border_radius=8)
-    pygame.draw.rect(surface, sk_bord, (sk_x, hud_y + 8, 52, 52), 2, border_radius=8)
-    if not sk_ready:
-        fill_h = int(52 * (skill_cd / max(0.01, skill_max)))
-        cd_overlay = pygame.Surface((52, max(1, fill_h)), pygame.SRCALPHA)
-        cd_overlay.fill((0, 0, 0, 140))
-        surface.blit(cd_overlay, (sk_x, hud_y + 8))
-    q_surf = _font(11).render("Q", True, WHITE)
-    surface.blit(q_surf, (sk_x + 4, hud_y + 10))
-    sn_surf = _font(10).render(skill_name[:7], True, WHITE)
-    surface.blit(sn_surf, (sk_x + 26 - sn_surf.get_width()//2, hud_y + 24))
-    if not sk_ready:
-        cd_surf = _font(13).render(f"{int(skill_cd)}", True, YELLOW)
-        surface.blit(cd_surf, (sk_x + 26 - cd_surf.get_width()//2, hud_y + 38))
-    else:
-        rdy_surf = _font(10).render("READY", True, (80, 255, 80))
-        surface.blit(rdy_surf, (sk_x + 26 - rdy_surf.get_width()//2, hud_y + 40))
+    # ── CENTER: 3 skill slots ─────────────────────────────────
+    skills     = CLASS_SKILLS.get(player.char_class, [])
+    skill_cds  = getattr(player, 'skill_cd', [0.0, 0.0, 0.0])
+    SLOT_W, SLOT_H = 58, 58
+    SLOT_GAP   = 10
+    KEY_LABELS = ["Q", "F", "R"]
+    total_w    = len(skills) * SLOT_W + (len(skills) - 1) * SLOT_GAP
+    start_x    = SCREEN_W // 2 - total_w // 2
+    slot_y     = hud_y + (HUD_H - SLOT_H) // 2
 
-    # Pause button
+    for idx, sk in enumerate(skills):
+        sx   = start_x + idx * (SLOT_W + SLOT_GAP)
+        cd   = skill_cds[idx] if idx < len(skill_cds) else 0
+        cdmax = sk.get("cooldown", 5.0)
+        ready = (cd <= 0)
+        col   = sk.get("color", (100, 180, 255))
+
+        # Is this skill active? (frenzy glow)
+        is_active = (sk["type"] == "rapid_fire" and frenzy_active)
+
+        # Slot background
+        bg_col   = (int(col[0]*0.18), int(col[1]*0.18), int(col[2]*0.18))
+        brd_col  = col if ready else (70, 70, 90)
+        if is_active:
+            brd_col = (255, 200, 0)
+
+        # Glow when ready
+        if ready and not is_active:
+            glow = pygame.Surface((SLOT_W + 8, SLOT_H + 8), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (*col, 50), (0, 0, SLOT_W + 8, SLOT_H + 8), border_radius=12)
+            surface.blit(glow, (sx - 4, slot_y - 4))
+
+        # Active frenzy pulsing glow
+        if is_active:
+            pulse_a = int(abs(math.sin(pygame.time.get_ticks() / 120)) * 120 + 40)
+            glow2 = pygame.Surface((SLOT_W + 16, SLOT_H + 16), pygame.SRCALPHA)
+            pygame.draw.rect(glow2, (255, 180, 0, pulse_a), (0, 0, SLOT_W + 16, SLOT_H + 16), border_radius=14)
+            surface.blit(glow2, (sx - 8, slot_y - 8))
+
+        pygame.draw.rect(surface, bg_col,  (sx, slot_y, SLOT_W, SLOT_H), border_radius=10)
+        pygame.draw.rect(surface, brd_col, (sx, slot_y, SLOT_W, SLOT_H), 2, border_radius=10)
+
+        # Cooldown overlay (fills from bottom)
+        if not ready:
+            fill_h = int(SLOT_H * (cd / max(0.01, cdmax)))
+            ov = pygame.Surface((SLOT_W - 4, max(1, fill_h)), pygame.SRCALPHA)
+            ov.fill((0, 0, 0, 160))
+            surface.blit(ov, (sx + 2, slot_y + SLOT_H - fill_h))
+
+        # Key label (top-left corner badge)
+        key_s = _font(11).render(KEY_LABELS[idx], True, WHITE)
+        surface.blit(key_s, (sx + 4, slot_y + 3))
+
+        # Skill icon emoji / symbol
+        icon_map = {"dash": "💨", "star_spread": "★", "rapid_fire": "⚡"}
+        icon_txt = icon_map.get(sk["type"], "?")
+        icon_s   = _font(20).render(icon_txt, True, col if ready else (120, 120, 140))
+        surface.blit(icon_s, (sx + SLOT_W//2 - icon_s.get_width()//2, slot_y + 10))
+
+        # Skill name
+        nm_s = _font(9).render(sk["name"][:7], True, col if ready else (120, 120, 140))
+        surface.blit(nm_s, (sx + SLOT_W//2 - nm_s.get_width()//2, slot_y + 36))
+
+        # CD countdown or READY
+        if not ready:
+            cd_s = _font(13).render(f"{cd:.1f}", True, YELLOW)
+            surface.blit(cd_s, (sx + SLOT_W//2 - cd_s.get_width()//2, slot_y + SLOT_H - 18))
+        else:
+            rd_s = _font(8).render("READY", True, (80, 255, 120))
+            surface.blit(rd_s, (sx + SLOT_W//2 - rd_s.get_width()//2, slot_y + SLOT_H - 14))
+
+    # ── Pause button (right) ──────────────────────────────────
     pb_w, pb_h = 52, 52
     pb_x = SCREEN_W - pb_w - 14
     pb_y = hud_y + 8
@@ -400,7 +462,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
     esc_s = _font(9).render("ESC", True, (160, 160, 200))
     surface.blit(esc_s, (pb_x + pb_w//2 - esc_s.get_width()//2, pb_y + pb_h - 13))
 
-    # Right info
+    # ── Right info (above pause) ──────────────────────────────
     mins = int(run_time) // 60
     secs = int(run_time) % 60
     time_str = f"{mins:02d}:{secs:02d}"

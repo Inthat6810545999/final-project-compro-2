@@ -19,7 +19,7 @@ from constants import (
     FPS, SCREEN_W, SCREEN_H, HUD_H,
     STATE_MENU, STATE_CLASS_SEL, STATE_PLAYING,
     STATE_INVENTORY, STATE_PAUSED, STATE_GAME_OVER,
-    STATE_VICTORY, STATE_SHOP, STATE_STATS,
+    STATE_VICTORY, STATE_SHOP, STATE_STATS, STATE_RANGE,
     WHITE, RED, GREEN, YELLOW, GOLD, CYAN, ORANGE, BLACK, GRAY,
     STAGE_CONFIGS,
 )
@@ -29,7 +29,8 @@ from enemy         import EnemyBullet
 from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal
 from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
-                           ShopScreen, PauseScreen, GameOverScreen)
+                           ShopScreen, PauseScreen, GameOverScreen,
+                           ShootingRangeScreen)
 
 
 class GameManager:
@@ -64,6 +65,8 @@ class GameManager:
         self.shake_mag       = 0             # shake magnitude in pixels
 
         self.menu_screen  = MainMenuScreen(self.tracker)
+        self.range_screen = ShootingRangeScreen()
+        self._frame_events = []
         self.class_screen = ClassSelectScreen()
         self.inv_screen   = InventoryScreen()
         self.pause_screen = PauseScreen()
@@ -78,14 +81,18 @@ class GameManager:
             dt        = min(dt, 0.05)
             mouse_pos = pygame.mouse.get_pos()
 
+            self._dt = dt
+            self._mouse_pos = mouse_pos
             self._handle_events(mouse_pos)
             self._update(dt, mouse_pos)
-            self._render(mouse_pos)
+            self._render(mouse_pos, dt)
             pygame.display.flip()
 
     # ── Events ───────────────────────────────────────────────
     def _handle_events(self, mouse_pos):
+        self._frame_events = []
         for event in pygame.event.get():
+            self._frame_events.append(event)
             if event.type == pygame.QUIT:
                 self.running = False
 
@@ -96,12 +103,16 @@ class GameManager:
                 self._on_click(event.pos, event.button)
 
             elif event.type == pygame.MOUSEWHEEL:
-                if self.state == STATE_INVENTORY:
+                if self.state == STATE_RANGE:
+                    self.range_screen.handle_scroll(event.y)
+                elif self.state == STATE_INVENTORY:
                     self.inv_screen.handle_scroll(-event.y, self.player)
 
     def _on_key(self, key):
         if key == pygame.K_ESCAPE:
-            if self.state == STATE_PLAYING:
+            if self.state == STATE_RANGE:
+                self.change_state(STATE_MENU)
+            elif self.state == STATE_PLAYING:
                 self.change_state(STATE_PAUSED)
             elif self.state == STATE_INVENTORY:
                 self.change_state(STATE_PLAYING)
@@ -120,7 +131,15 @@ class GameManager:
 
         elif key == pygame.K_q:
             if self.state == STATE_PLAYING:
-                self._use_skill()
+                self._use_skill(0)
+
+        elif key == pygame.K_f:
+            if self.state == STATE_PLAYING:
+                self._use_skill(1)
+
+        elif key == pygame.K_r:
+            if self.state == STATE_PLAYING:
+                self._use_skill(2)
 
         elif key == pygame.K_F11:
             self._toggle_fullscreen()
@@ -132,48 +151,111 @@ class GameManager:
         else:
             self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
 
-    def _use_skill(self):
-        """Trigger the active character skill (Q key)."""
+    def _use_skill(self, idx=0):
+        """Trigger skill at slot idx (0=Q Dash, 1=F Star Shot, 2=R Frenzy)."""
         from constants import CLASS_SKILLS
         p = self.player
         if not p or not p.alive:
             return
-        skill_cfg = CLASS_SKILLS.get(p.char_class)
-        if not skill_cfg:
+        skills = CLASS_SKILLS.get(p.char_class, [])
+        if idx >= len(skills):
             return
-        if p.skill_cd > 0:
+        skill_cfg = skills[idx]
+        if p.skill_cd[idx] > 0:
             self._add_fx(p.x, p.y - 40,
-                         f"Skill CD: {p.skill_cd:.1f}s", (160, 160, 160), 15)
+                         f"{skill_cfg['name']} CD: {p.skill_cd[idx]:.1f}s",
+                         (160, 160, 160), 14)
             return
-        # Build skill tuple for _handle_skill
         stype = skill_cfg["type"]
-        cost  = skill_cfg.get("mana_cost", 0)
-        dmg, _ = p.calc_damage()
-        skill_dmg = int(dmg * 1.8)
-        angle = p.facing_angle
-        dx = math.cos(angle); dy = math.sin(angle)
-
-        if stype == "nova_burst":
-            skill = (stype, skill_dmg, dx, dy, cost)
-        elif stype == "triple_shot":
-            skill = (stype, skill_dmg, angle, cost)
-        elif stype in ("whirlwind", "death_bolt"):
-            skill = (stype, skill_dmg, cost)
-        elif stype == "shield_slam":
-            skill = (stype, skill_dmg, cost)
-        elif stype == "smoke_dash":
-            skill = (stype, skill_dmg, cost)
-        else:
-            skill = (stype, skill_dmg, cost)
-
-        self._handle_skill(skill)
-        p.skill_cd = skill_cfg["cooldown"]
+        self._handle_skill_new(stype, skill_cfg)
+        p.skill_cd[idx] = skill_cfg["cooldown"]
 
     def _tick_skill_cd(self, dt):
-        if self.player and self.player.skill_cd > 0:
-            self.player.skill_cd = max(0.0, self.player.skill_cd - dt)
+        if self.player:
+            cds = self.player.skill_cd
+            if not isinstance(cds, (list, tuple)):
+                return
+            for i in range(len(cds)):
+                if cds[i] > 0:
+                    cds[i] = max(0.0, cds[i] - dt)
+
+    def _handle_skill_new(self, stype, cfg):
+        """Handle the 3 new Sausage Man skills with visual effects."""
+        p = self.player
+        col = cfg.get("color", (255, 255, 255))
+
+        # ── DASH ─────────────────────────────────────────────────
+        if stype == "dash":
+            keys = pygame.key.get_pressed()
+            from pygame.locals import K_w, K_a, K_s, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT
+            mdx = int(keys[K_d] or keys[K_RIGHT]) - int(keys[K_a] or keys[K_LEFT])
+            mdy = int(keys[K_s] or keys[K_DOWN])  - int(keys[K_w] or keys[K_UP])
+            if mdx == 0 and mdy == 0:
+                mdx = math.cos(p.facing_angle)
+                mdy = math.sin(p.facing_angle)
+            d = math.hypot(mdx, mdy) or 1
+            mdx /= d; mdy /= d
+
+            # Spawn afterimage ghost trail at old position every 30 px
+            walls = self.stage.wall_rects
+            steps = 5
+            step_dist = 28
+            ox, oy = p.x, p.y
+            for s in range(1, steps + 1):
+                tx = ox + mdx * step_dist * s
+                ty = oy + mdy * step_dist * s
+                r  = p.RADIUS
+                if not any(w.left < tx + r and w.right > tx - r and
+                           w.top  < ty + r and w.bottom > ty - r for w in walls):
+                    p.x, p.y = tx, ty
+                else:
+                    break
+                # Ghost trail particle
+                self._add_fx(tx, ty, "·", col, 20)
+
+            p.iframe_timer = 0.3   # brief invincibility during dash
+            self._add_fx(p.x, p.y - 36, "DASH!", col, 22)
+
+        # ── STAR SPREAD ──────────────────────────────────────────
+        elif stype == "star_spread":
+            from bullet import Bullet
+            angle = p.facing_angle
+            dmg, crit = p.calc_damage()
+            star_dmg = int(dmg * 1.4)
+            spd = (p.get_bullet_speed() or 7) * 1.1
+            star_col = (255, 220, 60)
+            spread_angles = [angle - math.radians(28), angle, angle + math.radians(28)]
+            barrel_offset = p.RADIUS + 16
+            for a in spread_angles:
+                bdx = math.cos(a); bdy = math.sin(a)
+                bx = p.x + bdx * barrel_offset
+                by = p.y + bdy * barrel_offset
+                b = Bullet(bx, by, bdx, bdy, spd, star_dmg,
+                           pierce=False, is_crit=False, color=star_col, size=10)
+                self.bullets.append(b)
+            # Sparkle FX: ring of star texts
+            for i in range(8):
+                a2 = math.tau / 8 * i
+                fx_x = p.x + math.cos(a2) * 40
+                fx_y = p.y + math.sin(a2) * 40
+                self._add_fx(fx_x, fx_y, "★", (255, 240, 80), 18)
+            self._add_fx(p.x, p.y - 40, "STAR SHOT!", col, 22)
+
+        # ── RAPID FIRE (FRENZY) ───────────────────────────────────
+        elif stype == "rapid_fire":
+            dur = cfg.get("duration", 3.0)
+            p._frenzy_timer   = dur
+            p._frenzy_mult    = 2.5
+            # Burst of lightning sparks around player
+            for i in range(10):
+                a3 = math.tau / 10 * i
+                fx_x = p.x + math.cos(a3) * 48
+                fx_y = p.y + math.sin(a3) * 48
+                self._add_fx(fx_x, fx_y, "⚡", col, 19)
+            self._add_fx(p.x, p.y - 42, "FRENZY! 3s", col, 24)
 
     def _handle_skill(self, skill):
+        """Legacy skill handler kept for compatibility."""
         if not skill or self.player is None:
             return
         t = skill[0]
@@ -294,6 +376,10 @@ class GameManager:
             result = self.menu_screen.handle_click(pos)
             if result == "play":
                 self._start_new_game("Sausage Man")
+            elif result == "range":
+                self.range_screen._reset()
+                self.range_screen.set_player(self.player if self.player else __import__("player").Player("Hero", "Sausage Man"))
+                self.change_state(STATE_RANGE)
             elif result == "stats":
                 self.tracker.plot_dashboard()
             elif result == "quit":
@@ -330,6 +416,14 @@ class GameManager:
                              f"Shop Rerolled! Next: {cost}G", CYAN, 20)
             elif result == "leave":
                 self._next_stage()   # FIX: method now defined below
+
+        elif self.state == STATE_RANGE:
+            mouse_buttons = pygame.mouse.get_pressed()
+            mouse_buttons = pygame.mouse.get_pressed()
+            self.range_screen.update(self._dt, self._frame_events, self._mouse_pos, mouse_buttons)
+            result = self.range_screen.handle_click(pos)
+            if result == "menu":
+                self.change_state(STATE_MENU)
 
         elif self.state in (STATE_GAME_OVER, STATE_VICTORY):
             if hasattr(self.over_screen, "btn_menu") and self.over_screen.btn_menu.collidepoint(pos):
@@ -547,6 +641,7 @@ class GameManager:
             wpn = p.weapon
             if wpn and not wpn.is_melee:
                 # Ranged attack
+                frenzy_mult = getattr(p, '_frenzy_mult', 1.0) if getattr(p, '_frenzy_timer', 0) > 0 else 1.0
                 if p.shoot_cooldown <= 0:
                     wpn = p.weapon
                     mana_cost = wpn.mana_cost if wpn and hasattr(wpn, "mana_cost") else 2
@@ -559,17 +654,67 @@ class GameManager:
                         p.use_mana(mana_cost)
                         dmg, crit = p.calc_damage()
                         angle = math.atan2(world_mouse[1] - p.y, world_mouse[0] - p.x)
-                        dx = math.cos(angle)
-                        dy = math.sin(angle)
-                        spd = p.get_bullet_speed() or 7
-                        pierce = False
-                        # Spawn from gun barrel tip (RADIUS + barrel offset forward)
+                        spd   = p.get_bullet_speed() or 7
+                        fx    = wpn.effect if hasattr(wpn, 'effect') and wpn.effect else {}
+                        pat   = fx.get("pattern", "single")
+                        pierce = fx.get("pierce", False) or pat == "pierce"
+                        col   = fx.get("bullet_color", (255, 230, 80))
+                        bsz   = fx.get("bullet_size", 5)
                         barrel_offset = p.RADIUS + 16
-                        bx = p.x + dx * barrel_offset
-                        by = p.y + dy * barrel_offset
-                        self.bullets.append(Bullet(bx, by, dx, dy, spd, dmg,
-                                                   pierce=pierce, is_crit=crit))
-                        p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
+
+                        def _spawn_bullet(ang, dmg=dmg, crit=crit):
+                            dx = math.cos(ang); dy = math.sin(ang)
+                            bx = p.x + dx * barrel_offset
+                            by = p.y + dy * barrel_offset
+                            self.bullets.append(Bullet(bx, by, dx, dy, spd, dmg,
+                                                       pierce=pierce, is_crit=crit,
+                                                       color=col, size=bsz))
+
+                        sp = lambda a: a + (random.random() - 0.5) * 0.22
+
+                        if pat in ("single", "pierce"):
+                            _spawn_bullet(angle)
+                        elif pat == "double":
+                            _spawn_bullet(angle + 0.09)
+                            _spawn_bullet(angle - 0.09)
+                        elif pat == "spread3":
+                            for i in (-1, 0, 1):
+                                _spawn_bullet(angle + i * 0.20)
+                        elif pat == "spread5":
+                            for i in range(-2, 3):
+                                _spawn_bullet(sp(angle + i * 0.15))
+                        elif pat == "spread_random":
+                            _spawn_bullet(sp(angle))
+                        elif pat == "burst3":
+                            # Fire first shot now; queue remaining 2 on player
+                            _spawn_bullet(angle)
+                            p._burst_queue   = 2
+                            p._burst_timer   = 0.0
+                            p._burst_angle   = angle
+                            p._burst_args    = (spd, pierce, col, bsz, barrel_offset)
+                        else:
+                            _spawn_bullet(angle)
+
+                        p.shoot_cooldown = (1.0 / max(0.1, p.get_fire_rate())) / frenzy_mult
+                        # Screen shake during frenzy
+                        if frenzy_mult > 1.0:
+                            self.shake_timer = max(self.shake_timer, 0.12)
+                            self.shake_mag   = 6
+
+        # ── Burst queue flush (burst3 follow-up shots) ─────────
+        if getattr(p, '_burst_queue', 0) > 0:
+            p._burst_timer -= dt
+            if p._burst_timer <= 0:
+                spd, pierce, col, bsz, barrel_offset = p._burst_args
+                ang = p._burst_angle
+                dx = math.cos(ang); dy = math.sin(ang)
+                bx = p.x + dx * barrel_offset; by = p.y + dy * barrel_offset
+                dmg_b, crit_b = p.calc_damage()
+                self.bullets.append(Bullet(bx, by, dx, dy, spd, dmg_b,
+                                           pierce=pierce, is_crit=crit_b,
+                                           color=col, size=bsz))
+                p._burst_queue -= 1
+                p._burst_timer  = 0.07
 
         # ── Player bullets ────────────────────────────────────
         # Figure out which room the player is currently in (may be None = corridor)
@@ -643,7 +788,7 @@ class GameManager:
                 from enemy import BossEnemy
                 is_boss = isinstance(e, BossEnemy)
                 mana_roll = random.random()
-                if is_boss or mana_roll < 0.35:
+                if is_boss or mana_roll < 0.60:
                     mana_amt = random.randint(8, 18) if not is_boss else random.randint(25, 40)
                     p.mana = min(p.max_mana, p.mana + mana_amt)
                     self._add_fx(e.x, e.y - e.size - 26, f"+{mana_amt} MP", (80, 160, 255), 15)
@@ -690,6 +835,13 @@ class GameManager:
         if hasattr(p, '_no_mana_fx_cd') and p._no_mana_fx_cd > 0:
             p._no_mana_fx_cd = max(0.0, p._no_mana_fx_cd - dt)
 
+        # ── Frenzy timer tick ──────────────────────────────────
+        if hasattr(p, '_frenzy_timer') and p._frenzy_timer > 0:
+            p._frenzy_timer = max(0.0, p._frenzy_timer - dt)
+            if p._frenzy_timer <= 0:
+                p._frenzy_mult = 1.0
+                self._add_fx(p.x, p.y - 40, "Frenzy ended", (180, 100, 30), 14)
+
         # ── Player death ──────────────────────────────────────
         if not p.alive:
             # FIX: call end_run so stats are saved
@@ -704,7 +856,7 @@ class GameManager:
                 self._add_fx(px, py - 50, "PORTAL OPENED!", (200, 120, 255), 22)
 
     # ── Render ───────────────────────────────────────────────
-    def _render(self, mouse_pos):
+    def _render(self, mouse_pos, dt=0.016):
         self.screen.fill((12, 12, 20))
 
         if self.state == STATE_MENU:
@@ -765,6 +917,11 @@ class GameManager:
         elif self.state == STATE_PAUSED:
             self.stage.draw(self.screen, player=self.player)
             self.pause_screen.draw(self.screen, mouse_pos)
+
+        elif self.state == STATE_RANGE:
+            mouse_buttons = pygame.mouse.get_pressed()
+            self.range_screen.update(dt, self._frame_events, mouse_pos, mouse_buttons)
+            self.range_screen.draw(self.screen, mouse_pos)
 
         elif self.state in (STATE_GAME_OVER, STATE_VICTORY):
             win = (self.state == STATE_VICTORY)

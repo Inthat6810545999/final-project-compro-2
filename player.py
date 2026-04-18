@@ -14,6 +14,68 @@ _rnd = random.Random()
 _SPRITE      = None
 _SPRITE_FLIP = None
 
+# ── Gun sprite system ─────────────────────────────────────────────────────────
+# PNG files must sit in the same folder as player.py
+# Filename convention: replace spaces with underscores, e.g. "Hand_Pistol.png"
+# Images should face RIGHT; black backgrounds are auto-removed at load time.
+
+_GUN_CACHE: dict = {}   # weapon_name -> Surface | None
+
+# Display size (w, h) per gun shape — tweak to taste
+_GUN_SIZE = {
+    "pistol":   (40, 24),   # ลดจาก (52,36) — พอดีตัว
+    "revolver": (44, 26),
+    "smg":      (44, 22),
+    "shotgun":  (50, 28),
+    "rifle":    (56, 22),
+    "sniper":   (64, 18),
+    "launcher": (52, 32),
+    "minigun":  (54, 30),
+}
+
+def _remove_black_bg(surf: "pygame.Surface") -> "pygame.Surface":
+    """Make near-black pixels transparent (for PNGs without alpha channel)."""
+    surf = surf.convert_alpha()
+    try:
+        # Fast path: numpy surfarray
+        import numpy as np
+        rgb   = pygame.surfarray.pixels3d(surf)          # (w, h, 3) uint8
+        alpha = pygame.surfarray.pixels_alpha(surf)      # (w, h)    uint8
+        mask  = (rgb[:, :, 0] < 45) & (rgb[:, :, 1] < 45) & (rgb[:, :, 2] < 45)
+        alpha[mask] = 0
+        del rgb, alpha   # release surface lock
+    except Exception:
+        # Slow fallback: pixel-by-pixel via get_at / set_at
+        w, h = surf.get_size()
+        for x in range(w):
+            for y in range(h):
+                c = surf.get_at((x, y))
+                if c.r < 45 and c.g < 45 and c.b < 45:
+                    surf.set_at((x, y), (0, 0, 0, 0))
+    return surf
+
+def _load_gun_sprite(weapon_name: str, gun_shape: str):
+    """Return cached Surface for weapon, or None if PNG not found."""
+    if weapon_name in _GUN_CACHE:
+        return _GUN_CACHE[weapon_name]
+    filename = weapon_name.replace(" ", "_").replace("-", "-") + ".png"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    path     = os.path.join(base_dir, filename)
+    print(f"[gun] Looking for: {path}")
+    print(f"[gun] File exists: {os.path.exists(path)}")
+    surf     = None
+    if os.path.exists(path):
+        try:
+            raw  = pygame.image.load(path).convert_alpha()
+            raw  = _remove_black_bg(raw)
+            w, h = _GUN_SIZE.get(gun_shape, (56, 32))
+            surf = pygame.transform.smoothscale(raw, (w, h))
+            print(f"[gun] Loaded {filename} → {w}×{h}")
+        except Exception as e:
+            print(f"[gun] Failed to load {filename}: {e}")
+    _GUN_CACHE[weapon_name] = surf
+    return surf
+
 def _load_sprite():
     global _SPRITE, _SPRITE_FLIP
     if _SPRITE is not None:
@@ -67,7 +129,7 @@ class Player:
         self.shoot_cooldown = 0.0
         self.facing_angle   = 0.0
         self.facing_right   = True
-        self.skill_cd       = 0.0
+        self.skill_cd       = [0.0, 0.0, 0.0]  # one per skill slot
 
         self.iframe_timer = 0.0
         self.IFRAME_DUR   = 0.35
@@ -197,9 +259,6 @@ class Player:
         if self.shoot_cooldown > 0:
             self.shoot_cooldown -= dt
 
-        if self.skill_cd > 0:
-            self.skill_cd = max(0.0, self.skill_cd - dt)
-
         self._armor_regen_timer += dt
         if self._armor_regen_timer > 1.0:
             self.armor = min(self.max_armor, self.armor + 12.0 * dt)
@@ -226,22 +285,33 @@ class Player:
         self._draw_gun(surface, sx, sy, r)
 
     def _draw_gun(self, surface, sx, sy, r):
-        """Draw gun model rotated toward facing angle."""
+        """Draw gun sprite (PNG) rotated toward cursor; falls back to polygon."""
         import math
         wpn = self.weapon
         if not wpn or wpn.is_melee:
             return
-        fx = self.effect if hasattr(self, 'effect') else getattr(wpn, 'effect', {})
-        if hasattr(wpn, 'effect'):
-            fx = wpn.effect
-        else:
-            fx = {}
+        fx = wpn.effect if hasattr(wpn, 'effect') else {}
 
         gun_shape = fx.get("gun_shape", "pistol")
         gun_color = fx.get("gun_color", (160, 160, 180))
         dark_col  = tuple(max(0, c - 60) for c in gun_color)
 
-        angle  = self.facing_angle
+        angle = self.facing_angle
+
+        # ── Sprite path ───────────────────────────────────────
+        gun_surf = _load_gun_sprite(wpn.name, gun_shape)
+        if gun_surf is not None:
+            angle_deg = math.degrees(angle)
+            base = pygame.transform.flip(gun_surf, False, True) if not self.facing_right else gun_surf
+            rotated = pygame.transform.rotozoom(base, -angle_deg, 1.0)
+            rw, rh  = rotated.get_size()
+            offset = r + 4
+            gx = sx + int(math.cos(angle) * offset) - rw // 2
+            gy = sy + int(math.sin(angle) * offset) - rh // 2
+            surface.blit(rotated, (gx, gy))
+            return
+
+        # ── Polygon fallback ──────────────────────────────────
         ox     = sx + int(math.cos(angle) * (r - 4))
         oy     = sy + int(math.sin(angle) * (r - 4))
         cos_a  = math.cos(angle)

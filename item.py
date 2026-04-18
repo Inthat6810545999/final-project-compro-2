@@ -9,16 +9,6 @@ from constants import (
     WEAPON_POOL, ARMOR_POOL, ACCESSORY_POOL,
 )
 
-# Mapping legacy RPG stats to new attributes.
-_LEGACY_MAP = {
-    "STR": ("atk",        lambda v: v),
-    "VIT": ("max_hp",     lambda v: v * 8),
-    "AGI": ("move_speed", lambda v: v * 0.06),
-    "INT": ("max_mana",   lambda v: v * 8),
-    "DEX": ("crit_chance",lambda v: v * 0.001),
-    "LUK": ("drop_luck",  lambda v: v * 0.01),
-}
-
 
 class Item:
     """Base class for all collectible items."""
@@ -55,23 +45,16 @@ class Item:
                     setattr(player, key, getattr(player, key) + val)
                 except Exception:
                     pass
-                continue
-            if key in _LEGACY_MAP:
-                attr, fn = _LEGACY_MAP[key]
-                if hasattr(player, attr):
-                    setattr(player, attr, getattr(player, attr) + fn(val))
 
     def remove_effect(self, player):
         if not hasattr(self, "stat_bonus") or not self.stat_bonus:
             return
         for key, val in self.stat_bonus.items():
             if hasattr(player, key):
-                setattr(player, key, getattr(player, key) - val)
-                continue
-            if key in _LEGACY_MAP:
-                attr, fn = _LEGACY_MAP[key]
-                if hasattr(player, attr):
-                    setattr(player, attr, getattr(player, attr) - fn(val))
+                try:
+                    setattr(player, key, getattr(player, key) - val)
+                except Exception:
+                    pass
 
 
 class Weapon(Item):
@@ -156,11 +139,17 @@ class Accessory(Item):
 # ── Module-level factory functions ───────────────────────────────────────────
 
 def make_starting_weapon(char_class):
-    """Return the starter weapon for Sausage Man."""
-    _pistol_fx = {"pattern":"single", "bullet_color":(255,100,120), "bullet_size":6,
-                  "gun_shape":"pistol", "gun_color":(200,80,120), "pierce":False, "mana_cost":1}
-    return Weapon("Sausage Gun", 14, 0.80, 10, "Common", (240, 60, 120),
-                  "Rapid fire — tastes like victory", "Any", {}, _pistol_fx)
+    """Return Hand Pistol (from WEAPON_POOL) as the starting weapon."""
+    for entry in WEAPON_POOL:
+        if entry[0] == "Hand Pistol":
+            effect = entry[9] if len(entry) > 9 else None
+            return Weapon(entry[0], entry[1], entry[2], entry[3],
+                          entry[4], entry[5], entry[6], "Any", entry[8], effect)
+    # Fallback — should never reach here
+    _fx = {"pattern": "single", "bullet_color": (255, 230, 80), "bullet_size": 5,
+           "gun_shape": "pistol", "gun_color": (160, 160, 180), "pierce": False, "mana_cost": 2}
+    return Weapon("Hand Pistol", 12, 2.0, 12, "Common", (160, 160, 180),
+                  "Rapid single shots", "Any", {}, _fx)
 
 
 def make_weapon(rarity="Common", weapon_class=None):
