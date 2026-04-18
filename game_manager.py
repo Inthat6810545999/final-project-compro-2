@@ -609,16 +609,14 @@ class GameManager:
                 eb.alive = False
                 if dmg == -1:
                     self._add_fx(p.x, p.y - 30, "DODGE!", CYAN, 20)
-                elif dmg > 0:
-                    self._add_fx(p.x, p.y - 30, f"-{dmg}", RED, 18)
-                    # ── Screen shake ──────────────────────────
+                elif dmg >= 0:   # armor-absorbed (0) OR HP lost (>0) — both count as a hit
+                    # ── Screen shake on ANY hit (armor or HP) ─
                     self.shake_timer = 0.28
                     self.shake_mag   = 7
-                    # ── Fire rate boost (Adrenaline!) ─────────
+                    # ── Fire-rate boost ────────────────────────
                     if not getattr(p, '_fire_boost_timer', 0) > 0:
                         p.aspd_mult = getattr(p, 'aspd_mult', 1.0) * 1.6
                     p._fire_boost_timer = 3.5
-                    self._add_fx(p.x, p.y - 52, "ADRENALINE!", (255, 180, 50), 15)
 
         # ── Enemy update + death ──────────────────────────────
         for e in list(self.enemies):

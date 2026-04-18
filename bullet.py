@@ -189,41 +189,92 @@ class Portal:
     def draw(self, surface, cam_x=0, cam_y=0):
         t  = self._bob
         sx = int(self.x - cam_x)
-        sy = int(self.y - cam_y) + int(math.sin(t) * 5)
-        r  = self.RADIUS
+        sy = int(self.y - cam_y) + int(math.sin(t * 0.8) * 4)
+        r  = self.RADIUS  # 30
 
-        # Outer pulsing glow
-        glow_r = r + 14 + int(math.sin(t * 2.8) * 6)
-        glow   = pygame.Surface((glow_r*2+4, glow_r*2+4), pygame.SRCALPHA)
-        pygame.draw.circle(glow, (140, 0, 255, 70), (glow_r+2, glow_r+2), glow_r)
-        surface.blit(glow, (sx - glow_r - 2, sy - glow_r - 2))
+        # ── Soul Knight style portal ──────────────────────────
+        # 1) Far outer glow (soft teal halo)
+        for gr, ga in [(r + 26, 30), (r + 18, 55), (r + 10, 90)]:
+            g = pygame.Surface((gr*2+4, gr*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(g, (0, 220, 200, ga), (gr+2, gr+2), gr)
+            surface.blit(g, (sx - gr - 2, sy - gr - 2))
 
-        # Portal body
-        pygame.draw.circle(surface, (45, 0, 110), (sx, sy), r)
-        pygame.draw.circle(surface, (190, 80, 255), (sx, sy), r, 4)
+        # 2) Stone ring frame (dark grey outer band)
+        STONE  = (60, 65, 75)
+        STONE2 = (90, 95, 110)
+        pygame.draw.circle(surface, STONE,  (sx, sy), r + 6)
+        pygame.draw.circle(surface, STONE2, (sx, sy), r + 6, 3)
 
-        # Inner spinning ring
-        ring_r = r - 8
-        pygame.draw.circle(surface, (230, 160, 255), (sx, sy), ring_r, 2)
+        # 3) Crystal/gem studs on the frame (8 evenly spaced)
+        GEM_COL = (0, 230, 210)
+        GEM_BRIGHT = (180, 255, 250)
+        pulse_sz = 1 + int(math.sin(t * 4) * 0.8)
+        for i in range(8):
+            a  = t * 0.6 + i * math.pi / 4
+            gx = sx + int(math.cos(a) * (r + 4))
+            gy = sy + int(math.sin(a) * (r + 4))
+            pygame.draw.circle(surface, GEM_COL,   (gx, gy), 4 + pulse_sz)
+            pygame.draw.circle(surface, GEM_BRIGHT, (gx, gy), 2)
 
-        # 6 rotating energy spokes
-        for i in range(6):
-            a = t * 1.8 + i * math.pi / 3
-            ex = sx + int(math.cos(a) * (r - 5))
-            ey = sy + int(math.sin(a) * (r - 5))
-            pygame.draw.line(surface, (210, 110, 255), (sx, sy), (ex, ey), 2)
+        # 4) Inner dark vortex background
+        pygame.draw.circle(surface, (5, 15, 25), (sx, sy), r + 2)
 
-        # "PORTAL" label above
-        lbl = _font(13).render("PORTAL", True, (240, 200, 255))
-        surface.blit(lbl, (sx - lbl.get_width()//2, sy - r - 22))
+        # 5) Swirling vortex arcs (Soul Knight spinning lines)
+        VORTEX_COLS = [(0, 210, 190), (0, 160, 220), (100, 240, 230)]
+        for layer, col in enumerate(VORTEX_COLS):
+            arc_r = r - 2 - layer * 6
+            if arc_r < 4:
+                continue
+            arc_surf = pygame.Surface((arc_r*2+4, arc_r*2+4), pygame.SRCALPHA)
+            start_a  = int(math.degrees(t * 1.5 + layer * 1.2)) % 360
+            arc_col  = (*col, 200 - layer * 40)
+            pygame.draw.arc(arc_surf, arc_col,
+                            (2, 2, arc_r*2, arc_r*2),
+                            math.radians(start_a),
+                            math.radians(start_a + 200),
+                            3 - layer)
+            surface.blit(arc_surf, (sx - arc_r - 2, sy - arc_r - 2))
 
-        # Pulsing "E" badge
-        pulse = int(math.sin(t * 5) * 3)
-        bx, by = sx + r + 2, sy - 13
+        # 6) Reverse arc (opposite spin)
+        rev_r = r - 10
+        if rev_r > 4:
+            rev_surf = pygame.Surface((rev_r*2+4, rev_r*2+4), pygame.SRCALPHA)
+            ra = int(math.degrees(-t * 2.2)) % 360
+            pygame.draw.arc(rev_surf, (180, 255, 245, 160),
+                            (2, 2, rev_r*2, rev_r*2),
+                            math.radians(ra), math.radians(ra + 150), 2)
+            surface.blit(rev_surf, (sx - rev_r - 2, sy - rev_r - 2))
+
+        # 7) Bright centre core (Soul Knight portal heart)
+        core_r = 8 + int(math.sin(t * 5) * 2)
+        core_g = pygame.Surface((core_r*2+4, core_r*2+4), pygame.SRCALPHA)
+        pygame.draw.circle(core_g, (200, 255, 250, 180), (core_r+2, core_r+2), core_r)
+        surface.blit(core_g, (sx - core_r - 2, sy - core_r - 2))
+        pygame.draw.circle(surface, WHITE, (sx, sy), 3)
+
+        # 8) Floating star particles inside vortex
+        import random as _pr
+        _pr.seed(int(t * 6))
+        for _ in range(5):
+            px2 = sx + _pr.randint(-(r-8), r-8)
+            py2 = sy + _pr.randint(-(r-8), r-8)
+            pr2 = _pr.randint(1, 3)
+            pa  = _pr.randint(100, 220)
+            ps  = pygame.Surface((pr2*2+2, pr2*2+2), pygame.SRCALPHA)
+            pygame.draw.circle(ps, (220, 255, 250, pa), (pr2+1, pr2+1), pr2)
+            surface.blit(ps, (px2 - pr2 - 1, py2 - pr2 - 1))
+
+        # 9) Label above
+        lbl = _font(13).render("NEXT STAGE", True, (180, 255, 245))
+        surface.blit(lbl, (sx - lbl.get_width()//2, sy - r - 26))
+
+        # 10) Pulsing "E" badge
+        pulse = int(math.sin(t * 5) * 2)
+        bx, by = sx + r + 4, sy - 12
         badge  = pygame.Rect(bx - 2, by - 2, 22 + pulse, 22 + pulse)
-        pygame.draw.rect(surface, (20, 10, 35),  badge, border_radius=4)
-        pygame.draw.rect(surface, GOLD,           badge, 2, border_radius=4)
-        e_s = _font(13).render("E", True, GOLD)
+        pygame.draw.rect(surface, (5, 20, 25),   badge, border_radius=4)
+        pygame.draw.rect(surface, (0, 220, 200), badge, 2, border_radius=4)
+        e_s = _font(13).render("E", True, (0, 220, 200))
         surface.blit(e_s, (bx + 3, by + 1))
 
 
