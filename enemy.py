@@ -10,7 +10,8 @@ import random
 import pygame
 from constants import (
     ENEMY_DATA, WHITE, RED, GREEN, YELLOW, ORANGE, BLACK, GRAY,
-    SCREEN_W, SCREEN_H, HUD_H,   # FIX: import HUD_H instead of using magic 80
+    SCREEN_W, SCREEN_H, HUD_H,
+    MAP_W, MAP_H, TILE,   # FIX: world bounds for bullet out-of-range check
 )
 from item import make_random_item
 
@@ -52,6 +53,8 @@ class Enemy:
         self.patrol_angle = random.uniform(0, math.tau)
         self.patrol_timer = 0.0
         self.hurt_timer  = 0.0
+        # Soul Knight style: freeze until player enters the room (door closes)
+        self.activated   = False
 
     def change_ai_state(self, new_state):
         self.ai_state = new_state
@@ -84,6 +87,9 @@ class Enemy:
 
     def update(self, player, walls, dt, bullets_out):
         if not self.alive:
+            return
+        # Soul Knight: stay frozen until the room door closes (player entered room)
+        if not self.activated:
             return
         if self.hurt_timer  > 0: self.hurt_timer  -= dt
         if self.shoot_timer > 0: self.shoot_timer -= dt
@@ -199,7 +205,8 @@ class RangedEnemy(Enemy):
 
     def _do_attack(self, player, bullets_out, dt, walls):
         dist      = self._dist_to_player(player)
-        preferred = self.shoot_range * 0.7
+        # FIX: use a safe preferred distance; shoot_range default is 0
+        preferred = max(150, self.shoot_range * 0.7)
         if dist < preferred * 0.5:
             dx = self.x - player.x
             dy = self.y - player.y
@@ -413,21 +420,21 @@ class EnemyBullet:
         self.radius = 6
         self.color  = color or ORANGE
 
-    # FIX: signature was (self, dt) — game_manager passes (dt, walls)
+    # FIX: use world map bounds (MAP_W*TILE, MAP_H*TILE) not screen pixels.
+    # Bullets live in world-space; SCREEN_W/H caused instant death off-screen.
     def update(self, dt, walls=None):
         self.x += self.dx * self.speed * 60 * dt
         self.y += self.dy * self.speed * 60 * dt
 
-        # Wall collision (optional — only if walls provided)
         if walls:
             for wall in walls:
                 if wall.collidepoint(self.x, self.y):
                     self.alive = False
                     return
 
-        # FIX: use HUD_H constant instead of magic 80
-        play_h = SCREEN_H - HUD_H
-        if self.x < 0 or self.x > SCREEN_W or self.y < 0 or self.y > play_h:
+        map_w = MAP_W * TILE
+        map_h = MAP_H * TILE
+        if self.x < 0 or self.x > map_w or self.y < 0 or self.y > map_h:
             self.alive = False
 
     def draw(self, surface, cam_x=0, cam_y=0):

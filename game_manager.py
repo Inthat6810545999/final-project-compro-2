@@ -497,6 +497,12 @@ class GameManager:
                                 e.x += (ddx / dist) * (e.size + 28)
                                 e.y += (ddy / dist) * (e.size + 28)
                     self.stage.close_room_doors(cur_room)
+                    # Soul Knight: activate all enemies in this room now
+                    for e in self.enemies:
+                        if e.alive and not e.activated:
+                            hr = getattr(e, "home_room", None)
+                            if hr is cur_room:
+                                e.activated = True
             else:
                 if not cur_room.doors_open:
                     self.stage.open_room_doors(cur_room)

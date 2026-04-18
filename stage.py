@@ -281,8 +281,8 @@ class Room:
 
 # ─────────────────────────────────────────────────────────────
 class Stage:
-    MAP_W = 32
-    MAP_H = 24
+    MAP_W = 60   # large canvas so rooms have breathing room between them
+    MAP_H = 60
 
     def __init__(self, stage_id):
         cfg = STAGE_CONFIGS[stage_id]
@@ -300,39 +300,151 @@ class Stage:
         self.boss_room  = None
         self.corridors  = []
 
-        self._door_wall_set = set()   # ids of wall_rects added for closed doors
+        self._door_wall_set = set()
 
         self.generate_rooms()
 
         self.cam_x = 0.0
         self.cam_y = 0.0
 
-    # ── BSP generation ────────────────────────────────────────
+    # ── Soul Knight hub-and-spoke generation ─────────────────
     def generate_rooms(self):
-        root = BSPNode(1, 1, self.MAP_W - 2, self.MAP_H - 2)
-        root.split(depth=3)
-        raw_rooms     = root.get_rooms()
-        raw_corridors = root.connect()
+        """
+        True Soul Knight style:
+          - Tilemap starts ALL walls (0)
+          - Rooms are carved as isolated rectangles
+          - Narrow 2-tile corridors connect them
+          - Walls between rooms are solid — rooms feel separate
+        """
+        CORR_W = 2     # narrow corridors like Soul Knight
+        PAD    = 2     # border keep-out
 
-        self.tilemap = [[0]*self.MAP_W for _ in range(self.MAP_H)]
-        for room in raw_rooms:
-            for ty in range(room.y, room.y + room.h):
-                for tx in range(room.x, room.x + room.w):
-                    if 0 <= ty < self.MAP_H and 0 <= tx < self.MAP_W:
-                        self.tilemap[ty][tx] = 1
-        for cor in raw_corridors:
-            for ty in range(cor.y, cor.y + cor.h):
-                for tx in range(cor.x, cor.x + cor.w):
-                    if 0 <= ty < self.MAP_H and 0 <= tx < self.MAP_W:
-                        self.tilemap[ty][tx] = 1
+        self.tilemap = [[0] * self.MAP_W for _ in range(self.MAP_H)]
+        self._torch_positions = []
 
+        def carve(x, y, w, h):
+            for ty in range(max(PAD, y), min(self.MAP_H - PAD, y + h)):
+                for tx in range(max(PAD, x), min(self.MAP_W - PAD, x + w)):
+                    self.tilemap[ty][tx] = 1
+
+        def in_bounds(x, y, w, h):
+            return (x >= PAD and y >= PAD and
+                    x + w <= self.MAP_W - PAD and
+                    y + h <= self.MAP_H - PAD)
+
+        room_rects = []
+
+        # ── 1) Central hub room ────────────────────────────────
+        hub_w = random.randint(8, 11)
+        hub_h = random.randint(7, 10)
+        hub_x = (self.MAP_W - hub_w) // 2
+        hub_y = (self.MAP_H - hub_h) // 2
+        carve(hub_x, hub_y, hub_w, hub_h)
+        hub = pygame.Rect(hub_x, hub_y, hub_w, hub_h)
+        room_rects.append(hub)
+
+        # ── 2) Branch builder ──────────────────────────────────
+        # Each branch = narrow corridor + room at end, Soul Knight style
+        # Gap between rooms is enforced by corridor length
+        def branch(direction, from_rect, corr_len=None, rw=None, rh=None):
+            fr  = from_rect
+            cl  = corr_len or random.randint(5, 10)  # corridor length (gap between rooms)
+            rw_ = rw or random.randint(7, 11)
+            rh_ = rh or random.randint(6, 10)
+
+            # Corridor starts from center of from_rect edge
+            cx = fr.x + fr.w // 2 - CORR_W // 2
+            cy = fr.y + fr.h // 2 - CORR_W // 2
+
+            if direction == "N":
+                corr = pygame.Rect(cx, fr.y - cl, CORR_W, cl)
+                room = pygame.Rect(cx - (rw_ - CORR_W) // 2, fr.y - cl - rh_, rw_, rh_)
+                torch_t = (corr.x + CORR_W // 2, corr.y + cl // 2)
+            elif direction == "S":
+                corr = pygame.Rect(cx, fr.y + fr.h, CORR_W, cl)
+                room = pygame.Rect(cx - (rw_ - CORR_W) // 2, fr.y + fr.h + cl, rw_, rh_)
+                torch_t = (corr.x + CORR_W // 2, corr.y + cl // 2)
+            elif direction == "E":
+                corr = pygame.Rect(fr.x + fr.w, cy, cl, CORR_W)
+                room = pygame.Rect(fr.x + fr.w + cl, cy - (rh_ - CORR_W) // 2, rw_, rh_)
+                torch_t = (corr.x + cl // 2, corr.y + CORR_W // 2)
+            elif direction == "W":
+                corr = pygame.Rect(fr.x - cl, cy, cl, CORR_W)
+                room = pygame.Rect(fr.x - cl - rw_, cy - (rh_ - CORR_W) // 2, rw_, rh_)
+                torch_t = (corr.x + cl // 2, corr.y + CORR_W // 2)
+            else:
+                return None
+
+            if not in_bounds(room.x, room.y, room.w, room.h):
+                return None
+            if not in_bounds(corr.x, corr.y, corr.w, corr.h):
+                return None
+
+            # Check room doesn't overlap any existing room (keep rooms isolated)
+            padded = room.inflate(2, 2)
+            for rr in room_rects:
+                if padded.colliderect(rr.inflate(2, 2)):
+                    return None
+
+            carve(corr.x, corr.y, corr.w, corr.h)
+            carve(room.x,  room.y,  room.w,  room.h)
+            room_rects.append(room)
+
+            # Torch at corridor midpoint
+            wx = torch_t[0] * TILE + TILE // 2
+            wy = torch_t[1] * TILE + TILE // 2
+            self._torch_positions.append((wx, wy))
+            return room
+
+        # ── 3) Primary spokes N/S/E/W from hub ────────────────
+        dirs = ["N", "S", "E", "W"]
+        random.shuffle(dirs)
+        placed = []   # list of (dir, room_rect)
+        for d in dirs:
+            r = branch(d, hub)
+            if r:
+                placed.append((d, r))
+
+        # ── 4) Secondary branches from each spoke room ─────────
+        perp_map = {
+            "N": ["E", "W"], "S": ["E", "W"],
+            "E": ["N", "S"], "W": ["N", "S"],
+        }
+        secondary = []
+        for par_d, par_r in placed:
+            perps = perp_map[par_d][:]
+            random.shuffle(perps)
+            for pd in perps:
+                r2 = branch(pd, par_r,
+                            corr_len=random.randint(4, 8),
+                            rw=random.randint(6, 9),
+                            rh=random.randint(5, 8))
+                if r2:
+                    secondary.append((pd, r2))
+                    break   # one secondary per spoke
+
+        # ── 5) Tertiary branches (stage ≥ 2) ───────────────────
+        if self.stage_id >= 2:
+            all_placed = placed + secondary
+            random.shuffle(all_placed)
+            for par_d, par_r in all_placed[:2]:
+                # try same direction (extend chain) or perpendicular
+                for td in [par_d] + perp_map[par_d]:
+                    r3 = branch(td, par_r,
+                                corr_len=random.randint(4, 7),
+                                rw=random.randint(5, 8),
+                                rh=random.randint(5, 7))
+                    if r3:
+                        break
+
+        # ── 6) Build wall_rects from tilemap ──────────────────
         self.wall_rects = []
         for ty in range(self.MAP_H):
             for tx in range(self.MAP_W):
                 if self.tilemap[ty][tx] == 0:
                     self.wall_rects.append(pygame.Rect(tx*TILE, ty*TILE, TILE, TILE))
 
-        self.rooms     = [Room(r) for r in raw_rooms]
+        self.rooms     = [Room(r) for r in room_rects]
         self.boss_room = max(self.rooms, key=lambda r: r.rect.w * r.rect.h)
         self.boss_room.is_boss = True
 
@@ -474,10 +586,31 @@ class Stage:
                         (min(255,wall_col[0]+20), min(255,wall_col[1]+20), min(255,wall_col[2]+20)),
                         (sx, sy, TILE, TILE), 2)
 
-        # Draw fountains and doors
+        # Draw fountains, doors, and corridor torches
         for room in self.rooms:
             room.draw_fountain(surface, self.cam_x, self.cam_y, player)
             room.draw_doors(surface, self.cam_x, self.cam_y)
+        self._draw_torches(surface)
+
+    def _draw_torches(self, surface):
+        """Draw Soul Knight-style torch/lamp at each corridor-room junction."""
+        t = pygame.time.get_ticks() / 1000.0
+        for wx, wy in getattr(self, "_torch_positions", []):
+            sx = int(wx - self.cam_x)
+            sy = int(wy - self.cam_y)
+            play_h = SCREEN_H - HUD_H
+            if sx < -20 or sx > SCREEN_W + 20 or sy < -20 or sy > play_h + 20:
+                continue
+            # Glow halo
+            pulse = math.sin(t * 3.5 + wx * 0.01) * 0.2 + 0.8
+            glow_r = int(18 * pulse)
+            glow_s = pygame.Surface((glow_r*2+4, glow_r*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(glow_s, (255, 200, 60, 50), (glow_r+2, glow_r+2), glow_r)
+            surface.blit(glow_s, (sx - glow_r - 2, sy - glow_r - 2))
+            # Lamp body
+            pygame.draw.circle(surface, (220, 160, 40), (sx, sy), 7)
+            pygame.draw.circle(surface, (255, 220, 100), (sx, sy), 5)
+            pygame.draw.circle(surface, (255, 255, 180), (sx-1, sy-1), 2)
 
     def _floor_color(self):
         return {"forest":(60,90,40),"dungeon":(55,55,65),"volcano":(80,45,30),

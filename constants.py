@@ -13,8 +13,8 @@ ROOM_COLS = 17
 ROOM_ROWS = 13
 
 # FIX: export map dimensions so bullet.py can compute correct world bounds
-MAP_W = 32   # tiles (mirrors Stage.MAP_W)
-MAP_H = 24   # tiles (mirrors Stage.MAP_H)
+MAP_W = 60   # tiles (mirrors Stage.MAP_W)
+MAP_H = 60   # tiles (mirrors Stage.MAP_H)
 
 # ── Colors ───────────────────────────────────────────────────
 BLACK      = (0,   0,   0)
