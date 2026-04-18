@@ -54,12 +54,6 @@ class Player:
         self.move_speed  = self.speed
         self.aspd_mult   = 1.0
 
-        if char_class == "Ranger":
-            self.crit_chance += 0.12
-        elif char_class == "Rogue":
-            self.crit_chance += 0.10
-            self.crit_mult    = 2.5
-
         self.equipment = {
             "weapon":    make_starting_weapon(char_class),
             "armor":     None,
@@ -123,7 +117,7 @@ class Player:
     def take_damage(self, raw_damage):
         if self.iframe_timer > 0:
             return 0
-        dodge = 0.11 if self.char_class == "Rogue" else 0.03
+        dodge = 0.05
         if _rnd.random() < dodge:
             return -1
         leftover = raw_damage
@@ -159,8 +153,6 @@ class Player:
         if not wpn or wpn.is_melee:
             return 0
         spd = wpn.bullet_speed
-        if self.char_class == "Ranger":
-            spd *= 1.2
         return spd
 
     def get_fire_rate(self):

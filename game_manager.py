@@ -293,7 +293,7 @@ class GameManager:
         if self.state == STATE_MENU:
             result = self.menu_screen.handle_click(pos)
             if result == "play":
-                self._start_new_game("Ranger")
+                self._start_new_game("Sausage Man")
             elif result == "stats":
                 self.tracker.plot_dashboard()
             elif result == "quit":
@@ -553,7 +553,7 @@ class GameManager:
                     dx = math.cos(angle)
                     dy = math.sin(angle)
                     spd = p.get_bullet_speed() or 7
-                    pierce = (p.char_class in ("Mage", "Necromancer"))
+                    pierce = False
                     self.bullets.append(Bullet(p.x, p.y, dx, dy, spd, dmg,
                                                pierce=pierce, is_crit=crit))
                     p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
@@ -626,16 +626,9 @@ class GameManager:
             if not e.alive:
                 self._last_enemy_pos = (e.x, e.y)   # track for portal spawn
                 gold_drop = random.randint(2, 6 + self.stage_idx)
-                if p.char_class == "Rogue":
-                    gold_drop = int(gold_drop * 1.3)
                 p.gold += gold_drop
                 self._add_fx(e.x, e.y - e.size - 10, f"+{gold_drop}G", GOLD, 15)
-                # Necromancer: Soul Drain passive
-                if p.char_class == "Necromancer":
-                    p.hp   = min(p.max_hp,   p.hp   + 8)
-                    p.mana = min(p.max_mana, p.mana + 6)
-                    self._add_fx(e.x, e.y - e.size - 25, "+8HP +6MP", (60, 220, 120), 13)
-                # Drop loot (no LUK bonus — no stats system)
+                # Drop loot
                 itm = e.drop_loot(luk_bonus=0)
                 if itm:
                     self.drops.append(DroppedItem(itm, e.x, e.y))

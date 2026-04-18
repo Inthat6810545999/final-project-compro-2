@@ -154,24 +154,11 @@ class Accessory(Item):
 # ── Module-level factory functions ───────────────────────────────────────────
 
 def make_starting_weapon(char_class):
-    """Return the starter gun for a given class."""
-    _pistol_fx  = {"pattern":"single",  "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",  "gun_color":(160,160,180), "pierce":False}
-    _smg_fx     = {"pattern":"single",  "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",     "gun_color":(40,120,160),  "pierce":False}
-    _rifle_fx   = {"pattern":"single",  "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",   "gun_color":(60,100,40),   "pierce":False}
-    _plasma_fx  = {"pattern":"pierce",  "bullet_color":(0,220,255),   "bullet_size":6,  "gun_shape":"pistol",  "gun_color":(0,100,140),   "pierce":True}
-
-    if char_class == "Mage":
-        return Weapon("Plasma Pistol", 16, 0.55, 9,  "Common", (100,180,255),
-                      "Pierces 1 enemy", "Any", {}, _plasma_fx)
-    elif char_class == "Necromancer":
-        return Weapon("Dart Gun",      14, 0.60, 8,  "Common", (60,220,120),
-                      "Dark bolts",    "Any", {}, {**_pistol_fx, "bullet_color":(80,220,120), "gun_color":(40,120,60)})
-    elif char_class == "Ranger":
-        return Weapon("Hunting Rifle", 15, 0.70, 11, "Common", (139,90,43),
-                      "Accurate shots","Any", {}, _rifle_fx)
-    else:
-        return Weapon("Hand Pistol",   13, 0.80, 10, "Common", (160,160,180),
-                      "Rapid fire",   "Any", {}, _pistol_fx)
+    """Return the starter weapon for Sausage Man."""
+    _pistol_fx = {"pattern":"single", "bullet_color":(255,100,120), "bullet_size":6,
+                  "gun_shape":"pistol", "gun_color":(200,80,120), "pierce":False}
+    return Weapon("Sausage Gun", 14, 0.80, 10, "Common", (240, 60, 120),
+                  "Rapid fire — tastes like victory", "Any", {}, _pistol_fx)
 
 
 def make_weapon(rarity="Common", weapon_class=None):

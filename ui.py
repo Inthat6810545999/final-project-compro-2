@@ -108,65 +108,20 @@ class MainMenuScreen:
 # ─────────────────────────────────────────────────────────────
 class ClassSelectScreen:
     """
-    Soul Knight style character select:
-    - Left panel: scrollable character roster with animated preview
-    - Right panel: detailed stats, passive, skill info
-    - Animated character sprite (shooting/melee) in preview box
+    Single character select: Sausage Man.
+    Shows animated sprite, stats, and skill info.
     """
 
-    # Character visual definitions (shape, colors, accessories)
-    CHAR_VISUALS = {
-        "Mage": {
-            "body_col":   (140, 50,  220),
-            "armor_col":  (60,  20,  100),
-            "detail_col": (200, 120, 255),
-            "weapon":     "staff",
-        },
-        "Necromancer": {
-            "body_col":   (60,  180, 120),
-            "armor_col":  (20,  60,  40),
-            "detail_col": (120, 255, 180),
-            "weapon":     "staff",
-        },
-        "Ranger": {
-            "body_col":   (50,  190, 80),
-            "armor_col":  (30,  80,  30),
-            "detail_col": (180, 255, 120),
-            "weapon":     "bow",
-        },
-        "Rogue": {
-            "body_col":   (80,  160, 220),
-            "armor_col":  (20,  50,  80),
-            "detail_col": (150, 210, 255),
-            "weapon":     "bow",
-        },
-    }
-
-    STAT_LABELS = ["STR", "AGI", "VIT", "INT", "DEX", "LUK"]
-    STAT_COLORS = {
-        "STR": (220, 80,  80),
-        "AGI": (80,  220, 80),
-        "VIT": (220, 180, 60),
-        "INT": (140, 80,  240),
-        "DEX": (80,  200, 220),
-        "LUK": (255, 215, 0),
-    }
-
     def __init__(self):
-        self.selected    = None
-        self.hovered     = None
-        self._anim_t     = 0.0
-        self._char_list  = list(CLASSES.keys())
+        self.selected   = "Sausage Man"
+        self._anim_t    = 0.0
 
-    def _draw_character_sprite(self, surface, cx, cy, char_name, t, scale=1.0):
-        """Draw an animated pixel-art style character at (cx,cy)."""
-        vis  = self.CHAR_VISUALS.get(char_name, self.CHAR_VISUALS["Mage"])
-        wpn  = vis["weapon"]
-        bcol = vis["body_col"]
-        acol = vis["armor_col"]
-        dcol = vis["detail_col"]
+    def _draw_sausage_sprite(self, surface, cx, cy, t, scale=1.0):
+        """Draw an animated Sausage Man sprite."""
+        bcol = (240, 60, 120)
+        acol = (160, 20, 60)
+        dcol = (255, 180, 200)
 
-        # Body bob animation
         bob = int(math.sin(t * 4) * 2 * scale)
         r   = int(14 * scale)
 
@@ -174,7 +129,7 @@ class ClassSelectScreen:
         pygame.draw.ellipse(surface, (10, 10, 20),
                             (cx - r, cy + r * 2 + bob + 2, r * 2, int(r * 0.5)))
 
-        # Legs (walk animation)
+        # Legs
         leg_swing = int(math.sin(t * 6) * 4 * scale)
         leg_r     = int(5 * scale)
         pygame.draw.circle(surface, acol, (cx - int(4*scale), cy + r + bob + int(4*scale) + leg_swing), leg_r)
@@ -184,10 +139,11 @@ class ClassSelectScreen:
         pygame.draw.circle(surface, bcol, (cx, cy + bob), r)
         pygame.draw.circle(surface, acol, (cx, cy + bob), r, int(2*scale))
 
-        # Armor plate detail
-        arm_r = int(r * 0.65)
-        pygame.draw.ellipse(surface, acol,
-                            (cx - arm_r, cy + bob - int(4*scale), arm_r*2, int(arm_r*1.2)))
+        # Sausage segment lines
+        for off in (-int(4*scale), 0, int(4*scale)):
+            pygame.draw.line(surface, acol,
+                             (cx - r + 2, cy + bob + off),
+                             (cx + r - 2, cy + bob + off), max(1, int(scale)))
 
         # Eyes
         eye_off = int(4 * scale)
@@ -197,292 +153,129 @@ class ClassSelectScreen:
         pygame.draw.circle(surface, (20, 20, 40),    (cx - eye_off, cy + bob - int(3*scale)), max(1, eye_r-1))
         pygame.draw.circle(surface, (20, 20, 40),    (cx + eye_off, cy + bob - int(3*scale)), max(1, eye_r-1))
 
-        # Weapon
+        # Gun
         shoot_angle = math.sin(t * 2) * 0.15
         wx = cx + int(r * math.cos(shoot_angle))
         wy = cy + bob + int(r * 0.3 * math.sin(shoot_angle))
-
-        if wpn == "staff":
-            # Staff: long rod + orb
-            sx, sy = wx + int(16*scale), wy - int(20*scale)
-            pygame.draw.line(surface, dcol, (sx, sy + int(36*scale)), (sx, sy), int(3*scale))
-            orb_col = (200, 120, 255) if char_name == "Mage" else (80, 255, 160)
-            orb_r   = int(6 * scale)
-            orb_glow = int(math.sin(t * 5) * 1.5 + 8)
-            pygame.draw.circle(surface, orb_col, (sx, sy), orb_r + orb_glow // 3)
-            pygame.draw.circle(surface, (240, 220, 255), (sx, sy), orb_r)
-        elif wpn == "bow":
-            # Bow: arc shape
-            bx, by = wx + int(18*scale), wy
-            bow_r = int(12 * scale)
-            pygame.draw.arc(surface, dcol,
-                            (bx - bow_r, by - bow_r, bow_r * 2, bow_r * 2),
-                            -0.8, 0.8, int(2*scale))
-            # String
-            pygame.draw.line(surface, (200, 200, 200),
-                             (bx + int(bow_r * 0.6), by - int(bow_r * 0.7)),
-                             (bx + int(bow_r * 0.6), by + int(bow_r * 0.7)), 1)
-
-        # Class-specific detail
-        if char_name == "Mage":
-            # Wizard hat
-            hat_pts = [
-                (cx - int(12*scale), cy + bob - r + int(2*scale)),
-                (cx + int(12*scale), cy + bob - r + int(2*scale)),
-                (cx + int(8*scale),  cy + bob - r - int(4*scale)),
-                (cx,                 cy + bob - r - int(20*scale)),
-                (cx - int(8*scale),  cy + bob - r - int(4*scale)),
-            ]
-            pygame.draw.polygon(surface, (60, 20, 100), hat_pts)
-            pygame.draw.polygon(surface, dcol, hat_pts, int(2*scale))
-        elif char_name == "Necromancer":
-            # Hood
-            hood_pts = [
-                (cx - int(13*scale), cy + bob - r + int(2*scale)),
-                (cx + int(13*scale), cy + bob - r + int(2*scale)),
-                (cx + int(10*scale), cy + bob - r - int(8*scale)),
-                (cx,                 cy + bob - r - int(14*scale)),
-                (cx - int(10*scale), cy + bob - r - int(8*scale)),
-            ]
-            pygame.draw.polygon(surface, (20, 60, 40), hood_pts)
-            pygame.draw.polygon(surface, dcol, hood_pts, int(2*scale))
-        elif char_name == "Ranger":
-            # Quiver on back
-            pygame.draw.rect(surface, BROWN if 'BROWN' in dir() else (139,90,43),
-                             (cx + r - int(2*scale), cy + bob - int(8*scale),
-                              int(8*scale), int(20*scale)), border_radius=2)
-        elif char_name == "Rogue":
-            # Mask
-            pygame.draw.rect(surface, (20, 50, 80),
-                             (cx - int(8*scale), cy + bob - int(2*scale),
-                              int(16*scale), int(5*scale)), border_radius=2)
-            pygame.draw.rect(surface, dcol,
-                             (cx - int(8*scale), cy + bob - int(2*scale),
-                              int(16*scale), int(5*scale)), 1, border_radius=2)
+        gun_pts = [(wx, wy - int(2*scale)), (wx + int(16*scale), wy - int(2*scale)),
+                   (wx + int(16*scale), wy + int(2*scale)), (wx, wy + int(2*scale))]
+        pygame.draw.polygon(surface, dcol, gun_pts)
 
     def draw(self, surface, mouse_pos, dt=0.016):
         self._anim_t += dt
 
         surface.fill((6, 8, 18))
 
-        # Title
         text(surface, "SELECT CHARACTER", SCREEN_W//2, 18, 38, GOLD, bold=True, center=True)
         pygame.draw.line(surface, (40, 60, 120), (60, 65), (SCREEN_W-60, 65), 2)
 
-        chars      = self._char_list
-        n          = len(chars)
-        card_w     = 150
-        card_h     = 200
-        gap        = 12
-        total_w    = n * card_w + (n-1) * gap
-        start_x    = SCREEN_W//2 - total_w//2
-        roster_y   = 75
+        from constants import CLASSES, CLASS_SKILLS
+        cfg   = CLASSES["Sausage Man"]
+        skill = CLASS_SKILLS.get("Sausage Man", {})
 
-        self.char_rects = {}
+        # Single centered card
+        card_w, card_h = 200, 260
+        cx = SCREEN_W//2 - card_w//2
+        cy = 80
+        glow_a = int(60 + 30 * math.sin(self._anim_t * 3))
+        glow_surf = pygame.Surface((card_w+8, card_h+8), pygame.SRCALPHA)
+        pygame.draw.rect(glow_surf, (*cfg["color"], glow_a), (0, 0, card_w+8, card_h+8), 4, border_radius=12)
+        surface.blit(glow_surf, (cx-4, cy-4))
+        pygame.draw.rect(surface, (35, 45, 75),  (cx, cy, card_w, card_h), border_radius=10)
+        pygame.draw.rect(surface, cfg["color"],   (cx, cy, card_w, card_h), 3, border_radius=10)
 
-        for i, cname in enumerate(chars):
-            cfg   = CLASSES[cname]
-            cx    = start_x + i * (card_w + gap)
-            cy    = roster_y
-            hover = pygame.Rect(cx, cy, card_w, card_h).collidepoint(mouse_pos)
-            sel   = (self.selected == cname)
+        # Animated sprite in card
+        self._draw_sausage_sprite(surface, cx + card_w//2, cy + 100, self._anim_t * 2.0, scale=2.0)
 
-            # Card background
-            if sel:
-                fill   = (35, 45, 75)
-                border = cfg["color"]
-                bw     = 3
-            elif hover:
-                fill   = (25, 32, 55)
-                border = tuple(min(255, c + 60) for c in cfg["color"])
-                bw     = 2
-            else:
-                fill   = (15, 18, 35)
-                border = tuple(c // 2 for c in cfg["color"])
-                bw     = 1
+        text(surface, "Sausage Man", cx + card_w//2, cy + card_h - 72,
+             18, cfg["color"], bold=True, center=True)
+        text(surface, "Any Weapon", cx + card_w//2, cy + card_h - 46, 13, GRAY, center=True)
+        spd_int = min(5, max(1, int(cfg["speed"])))
+        pips = "".join("●" if i < spd_int else "○" for i in range(5))
+        text(surface, f"SPD {pips}", cx + card_w//2, cy + card_h - 24, 12, (100, 200, 100), center=True)
 
-            pygame.draw.rect(surface, fill,   (cx, cy, card_w, card_h), border_radius=10)
-            pygame.draw.rect(surface, border, (cx, cy, card_w, card_h), bw, border_radius=10)
+        self.char_rects = {"Sausage Man": pygame.Rect(cx, cy, card_w, card_h)}
 
-            if sel:
-                # Glow effect
-                glow_surf = pygame.Surface((card_w+8, card_h+8), pygame.SRCALPHA)
-                glow_a    = int(60 + 30 * math.sin(self._anim_t * 3))
-                pygame.draw.rect(glow_surf, (*cfg["color"], glow_a),
-                                 (0, 0, card_w+8, card_h+8), 4, border_radius=12)
-                surface.blit(glow_surf, (cx-4, cy-4))
+        # Detail panel
+        detail_y = cy + card_h + 18
+        detail_h = SCREEN_H - detail_y - 60
 
-            # Animated character sprite in card
-            anim_speed = 1.5 if sel else (0.8 if hover else 0.3)
-            self._draw_character_sprite(
-                surface, cx + card_w//2, cy + 80, cname,
-                self._anim_t * anim_speed, scale=1.4
-            )
+        prev_w = 200
+        prev_x = SCREEN_W//2 - 440
+        stat_x = prev_x + prev_w + 20
+        stat_w = SCREEN_W//2 + 440 - stat_x
 
-            # Name
-            text(surface, cname, cx + card_w//2, cy + card_h - 72,
-                 16, cfg["color"], bold=True, center=True)
+        panel(surface, prev_x, detail_y, prev_w, detail_h, fill=(12, 14, 28), border=cfg["color"])
+        self._draw_sausage_sprite(surface, prev_x + prev_w//2, detail_y + detail_h//2 - 10,
+                                  self._anim_t * 2.0, scale=2.8)
+        text(surface, "Sausage Man", prev_x + prev_w//2, detail_y + detail_h - 36,
+             18, cfg["color"], bold=True, center=True)
 
-            # Weapon category badge
-            wcat = cfg.get("weapon_class", "Any")
-            wcat_col = {
-                "Warrior": (220, 80, 80),
-                "Mage":    (160, 80, 255),
-                "Ranger":  (80, 200, 80),
-            }.get(wcat, GRAY)
-            badge_w = 80
-            bx = cx + card_w//2 - badge_w//2
-            pygame.draw.rect(surface, (wcat_col[0]//3, wcat_col[1]//3, wcat_col[2]//3),
-                             (bx, cy + card_h - 52, badge_w, 18), border_radius=4)
-            pygame.draw.rect(surface, wcat_col, (bx, cy + card_h - 52, badge_w, 18), 1, border_radius=4)
-            text(surface, wcat, cx + card_w//2, cy + card_h - 51,
-                 12, wcat_col, center=True)
+        panel(surface, stat_x, detail_y, stat_w, detail_h, fill=(10, 12, 24), border=(40, 50, 100))
+        sy = detail_y + 10
 
-            # Speed pip row
-            spd_int = min(5, max(1, int(cfg["speed"])))
-            pips    = ""
-            for p_i in range(5):
-                pips += "●" if p_i < spd_int else "○"
-            text(surface, f"SPD {pips}", cx + card_w//2, cy + card_h - 28,
-                 11, (100, 200, 100), center=True)
+        text(surface, cfg["description"], stat_x + 10, sy, 13, LIGHT_GRAY)
+        sy += 22
+        pygame.draw.line(surface, (30, 40, 80), (stat_x + 8, sy), (stat_x + stat_w - 8, sy))
+        sy += 8
 
-            self.char_rects[cname] = pygame.Rect(cx, cy, card_w, card_h)
-
-        # ── Detail panel (right side below cards) ────────────
-        if self.selected:
-            cfg    = CLASSES[self.selected]
-            vis    = self.CHAR_VISUALS.get(self.selected, {})
-            from constants import CLASS_SKILLS
-            skill  = CLASS_SKILLS.get(self.selected, {})
-
-            detail_y = roster_y + card_h + 18
-            detail_h = SCREEN_H - detail_y - 60
-
-            # Split into left (big preview) and right (stats)
-            prev_w = 200
-            prev_x = SCREEN_W//2 - 440
-            stat_x = prev_x + prev_w + 20
-            stat_w = SCREEN_W//2 + 440 - stat_x
-
-            # Big preview box
-            panel(surface, prev_x, detail_y, prev_w, detail_h,
-                  fill=(12, 14, 28), border=cfg["color"])
-
-            # Animated character (large)
-            self._draw_character_sprite(
-                surface,
-                prev_x + prev_w//2,
-                detail_y + detail_h//2 - 10,
-                self.selected,
-                self._anim_t * 2.0,
-                scale=2.2
-            )
-
-            # Character name below sprite
-            text(surface, self.selected,
-                 prev_x + prev_w//2, detail_y + detail_h - 36,
-                 18, cfg["color"], bold=True, center=True)
-
-            # ── Stats column ──────────────────────────────────
-            panel(surface, stat_x, detail_y, stat_w, detail_h,
-                  fill=(10, 12, 24), border=(40, 50, 100))
-
-            sy = detail_y + 10
-
-            # Description
-            text(surface, cfg["description"], stat_x + 10, sy, 13, LIGHT_GRAY)
-            sy += 22
-
-            pygame.draw.line(surface, (30, 40, 80),
-                             (stat_x + 8, sy), (stat_x + stat_w - 8, sy))
-            sy += 8
-
-            # ── Resource bars ─────────────────────────────────
-            text(surface, "RESOURCES", stat_x + 10, sy, 13, CYAN, bold=True)
+        text(surface, "RESOURCES", stat_x + 10, sy, 13, CYAN, bold=True)
+        sy += 18
+        for lbl, val, maxv, col in [
+            ("HP",    cfg["base_hp"],          200, RED),
+            ("Armor", cfg.get("max_armor", 80),140, CYAN),
+            ("Mana",  cfg.get("max_mana", 130),200, BLUE),
+            ("Speed", int(cfg["speed"] * 20),  100, GREEN),
+        ]:
+            text(surface, lbl, stat_x + 10, sy, 12, col, bold=True)
+            bw2 = stat_w - 80
+            pygame.draw.rect(surface, (20, 20, 35), (stat_x + 54, sy + 2, bw2, 11), border_radius=4)
+            fw = int(bw2 * min(1.0, val / maxv))
+            if fw > 0:
+                pygame.draw.rect(surface, col, (stat_x + 54, sy + 2, fw, 11), border_radius=4)
+            text(surface, str(val), stat_x + 58 + bw2, sy, 11, WHITE)
             sy += 18
-            res = [
-                ("HP",    cfg["base_hp"],           200, RED),
-                ("Armor", cfg.get("max_armor", 80), 140, CYAN),
-                ("Mana",  cfg.get("max_mana", 120), 200, BLUE),
-                ("Speed", int(cfg["speed"] * 20),   100, GREEN),
-            ]
-            for lbl, val, maxv, col in res:
-                text(surface, lbl, stat_x + 10, sy, 12, col, bold=True)
-                bw2 = stat_w - 80
-                pygame.draw.rect(surface, (20, 20, 35), (stat_x + 54, sy + 2, bw2, 11), border_radius=4)
-                fw = int(bw2 * min(1.0, val / maxv))
-                if fw > 0:
-                    pygame.draw.rect(surface, col, (stat_x + 54, sy + 2, fw, 11), border_radius=4)
-                text(surface, str(val), stat_x + 58 + bw2, sy, 11, WHITE)
-                sy += 18
 
-            pygame.draw.line(surface, (30, 40, 80),
-                             (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
-            sy += 10
+        pygame.draw.line(surface, (30, 40, 80), (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
+        sy += 10
 
-            # ── Starter weapon ────────────────────────────────
-            text(surface, "STARTER WEAPON", stat_x + 10, sy, 13, CYAN, bold=True)
-            sy += 18
-            wpn_info = {
-                "Mage":        ("Magic Wand",   16, "0.55/s", "Pierces 1 enemy"),
-                "Necromancer": ("Soul Staff",   14, "0.60/s", "Dark bolts"),
-                "Ranger":      ("Short Bow",    15, "0.70/s", "Fast arrows"),
-                "Rogue":       ("Hand Pistol",  13, "0.80/s", "Rapid fire"),
-            }.get(self.selected, ("?", 0, "?", ""))
-            text(surface, wpn_info[0], stat_x + 10, sy, 13, GOLD, bold=True)
-            sy += 16
-            text(surface, f"DMG {wpn_info[1]}  Rate {wpn_info[2]}  {wpn_info[3]}",
-                 stat_x + 10, sy, 11, LIGHT_GRAY)
-            sy += 20
+        text(surface, "STARTER WEAPON", stat_x + 10, sy, 13, CYAN, bold=True)
+        sy += 18
+        text(surface, "Sausage Gun", stat_x + 10, sy, 13, GOLD, bold=True)
+        sy += 16
+        text(surface, "DMG 14  Rate 0.80/s  Rapid fire", stat_x + 10, sy, 11, LIGHT_GRAY)
+        sy += 20
 
-            pygame.draw.line(surface, (30, 40, 80),
-                             (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
-            sy += 10
+        pygame.draw.line(surface, (30, 40, 80), (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
+        sy += 10
 
-            # ── Passive ───────────────────────────────────────
-            text(surface, "PASSIVE", stat_x + 10, sy, 13, YELLOW, bold=True)
-            sy += 16
-            ptext = cfg.get("passive", "")
-            for chunk in [ptext[i:i+48] for i in range(0, len(ptext), 48)]:
+        text(surface, "PASSIVE", stat_x + 10, sy, 13, YELLOW, bold=True)
+        sy += 16
+        ptext = cfg.get("passive", "")
+        for chunk in [ptext[i:i+48] for i in range(0, len(ptext), 48)]:
+            text(surface, chunk, stat_x + 10, sy, 11, LIGHT_GRAY)
+            sy += 14
+
+        pygame.draw.line(surface, (30, 40, 80), (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
+        sy += 10
+
+        text(surface, "SKILL  [Q]", stat_x + 10, sy, 13, (80, 200, 255), bold=True)
+        sy += 16
+        if skill:
+            text(surface, skill.get("name", ""), stat_x + 10, sy, 14, (120, 220, 255), bold=True)
+            text(surface, f"CD:{int(skill.get('cooldown',4))}s  MP:{skill.get('mana_cost',20)}",
+                 stat_x + 10, sy + 16, 11, ORANGE)
+            sy += 30
+            sk_desc = skill.get("description", "")
+            for chunk in [sk_desc[i:i+48] for i in range(0, len(sk_desc), 48)]:
                 text(surface, chunk, stat_x + 10, sy, 11, LIGHT_GRAY)
                 sy += 14
 
-            pygame.draw.line(surface, (30, 40, 80),
-                             (stat_x + 8, sy + 2), (stat_x + stat_w - 8, sy + 2))
-            sy += 10
-
-            # ── Skill ─────────────────────────────────────────
-            text(surface, "SKILL  [Q]", stat_x + 10, sy, 13, (80, 200, 255), bold=True)
-            sy += 16
-            if skill:
-                sk_name = skill.get("name", "")
-                sk_cd   = skill.get("cooldown", 5.0)
-                sk_mp   = skill.get("mana_cost", 0)
-                sk_desc = skill.get("description", "")
-                text(surface, f"{sk_name}", stat_x + 10, sy, 14, (120, 220, 255), bold=True)
-                text(surface, f"CD:{int(sk_cd)}s  MP:{sk_mp}",
-                     stat_x + 10, sy + 16, 11, ORANGE)
-                sy += 30
-                for chunk in [sk_desc[i:i+48] for i in range(0, len(sk_desc), 48)]:
-                    text(surface, chunk, stat_x + 10, sy, 11, LIGHT_GRAY)
-                    sy += 14
-
-        elif not self.selected:
-            # No selection prompt
-            text(surface, "← Click a character to see details →",
-                 SCREEN_W//2, roster_y + card_h + 40, 18, GRAY, center=True)
-
-        # ── Bottom buttons ────────────────────────────────────
+        # Bottom buttons
         self.btn_back = button(surface, 30, SCREEN_H - 54, 120, 40, "BACK", False, GRAY)
-
-        if self.selected:
-            bx2  = SCREEN_W - 230
-            col2 = cfg["color"] if self.selected else GRAY
-            play_hover = pygame.Rect(bx2, SCREEN_H - 54, 200, 40).collidepoint(mouse_pos)
-            self.btn_play = button(surface, bx2, SCREEN_H - 54, 200, 40,
-                                   f"PLAY  {self.selected}", play_hover, GREEN)
-        else:
-            self.btn_play = None
+        play_hover = pygame.Rect(SCREEN_W - 230, SCREEN_H - 54, 200, 40).collidepoint(mouse_pos)
+        self.btn_play = button(surface, SCREEN_W - 230, SCREEN_H - 54, 200, 40,
+                               "PLAY  Sausage Man", play_hover, GREEN)
 
         text(surface,
              "Q: Skill   WASD: Move   Click: Attack   E: Pick Up   TAB: Inventory",
@@ -491,18 +284,16 @@ class ClassSelectScreen:
     def handle_click(self, pos):
         for cname, rect in self.char_rects.items():
             if rect.collidepoint(pos):
-                if self.selected == cname:
-                    return cname   # double-click or re-click = confirm
                 self.selected = cname
-                return None   # just select, don't start game yet
+                return None
 
         if hasattr(self, "btn_play") and self.btn_play and self.btn_play.collidepoint(pos):
-            if self.selected:
-                return self.selected
+            return "Sausage Man"
 
         if hasattr(self, "btn_back") and self.btn_back.collidepoint(pos):
             return "back"
         return None
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -611,11 +402,10 @@ class InventoryScreen:
         text(surface, "CHARACTER", rx, ry, 15, CYAN, bold=True)
         ry += 24
 
-        # Class badge
-        cls_col = {"Mage": PURPLE, "Necromancer": (60,180,120),
-                   "Ranger": GREEN, "Rogue": (80,160,220)}.get(player.char_class, WHITE)
-        panel(surface, rx, ry, rw, 28, fill=(18, 10, 28), border=cls_col)
-        text(surface, player.char_class, rx+8, ry+6, 14, cls_col, bold=True)
+        # Character badge
+        cls_col = (240, 60, 120)
+        panel(surface, rx, ry, rw, 28, fill=(40, 10, 20), border=cls_col)
+        text(surface, "Sausage Man", rx+8, ry+6, 14, cls_col, bold=True)
         ry += 36
 
         pygame.draw.line(surface, (40, 40, 70), (rx, ry), (rx+rw, ry))
@@ -720,7 +510,7 @@ class InventoryScreen:
 class ShopScreen:
     """Opens automatically after each stage is cleared."""
 
-    def __init__(self, stage_id, char_class="Warrior"):
+    def __init__(self, stage_id, char_class="Sausage Man"):
         self.stage_id    = stage_id
         self.char_class  = char_class
         self.reroll_cost = SHOP_REROLL_COST
@@ -935,7 +725,7 @@ class GameOverScreen:
         cy      = 170
         pairs   = [
             ("Score",    f"{summary.get('score', 0):,}"),
-            ("Class",    player.char_class),
+            ("Hero",     "Sausage Man"),
             ("Level",    player.level),
             ("Enemies",  summary.get("enemies_defeated", 0)),
             ("Damage",   f"{summary.get('total_damage', 0):,}"),

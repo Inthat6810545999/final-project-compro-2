@@ -223,9 +223,9 @@ class StatsTracker:
 
         # 3) Avg score by class (bar)
         ax3 = fig.add_subplot(gs[0, 2])
-        class_names = ["Warrior", "Mage", "Ranger"]
+        class_names = ["Sausage Man"]
         class_avgs  = []
-        colors_bar  = ["#C0392B", "#8E44AD", "#27AE60"]
+        colors_bar  = ["#E83E8C"]
         for cn in class_names:
             cs = [s for s, c in zip(scores, classes) if c == cn]
             class_avgs.append(sum(cs) // max(1, len(cs)) if cs else 0)
