@@ -548,15 +548,28 @@ class GameManager:
             if wpn and not wpn.is_melee:
                 # Ranged attack
                 if p.shoot_cooldown <= 0:
-                    dmg, crit = p.calc_damage()
-                    angle = math.atan2(world_mouse[1] - p.y, world_mouse[0] - p.x)
-                    dx = math.cos(angle)
-                    dy = math.sin(angle)
-                    spd = p.get_bullet_speed() or 7
-                    pierce = False
-                    self.bullets.append(Bullet(p.x, p.y, dx, dy, spd, dmg,
-                                               pierce=pierce, is_crit=crit))
-                    p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
+                    wpn = p.weapon
+                    mana_cost = wpn.mana_cost if wpn and hasattr(wpn, "mana_cost") else 2
+                    if not p.can_use_mana(mana_cost):
+                        # Flash "No Mana!" once (not every frame)
+                        if not getattr(p, '_no_mana_fx_cd', 0) > 0:
+                            self._add_fx(p.x, p.y - 45, "No Mana!", (80, 120, 255), 16)
+                            p._no_mana_fx_cd = 0.6
+                    else:
+                        p.use_mana(mana_cost)
+                        dmg, crit = p.calc_damage()
+                        angle = math.atan2(world_mouse[1] - p.y, world_mouse[0] - p.x)
+                        dx = math.cos(angle)
+                        dy = math.sin(angle)
+                        spd = p.get_bullet_speed() or 7
+                        pierce = False
+                        # Spawn from gun barrel tip (RADIUS + barrel offset forward)
+                        barrel_offset = p.RADIUS + 16
+                        bx = p.x + dx * barrel_offset
+                        by = p.y + dy * barrel_offset
+                        self.bullets.append(Bullet(bx, by, dx, dy, spd, dmg,
+                                                   pierce=pierce, is_crit=crit))
+                        p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
 
         # ── Player bullets ────────────────────────────────────
         # Figure out which room the player is currently in (may be None = corridor)
@@ -626,6 +639,14 @@ class GameManager:
                 gold_drop = random.randint(2, 6 + self.stage_idx)
                 p.gold += gold_drop
                 self._add_fx(e.x, e.y - e.size - 10, f"+{gold_drop}G", GOLD, 15)
+                # Mana drop: 35% chance, boss always drops mana
+                from enemy import BossEnemy
+                is_boss = isinstance(e, BossEnemy)
+                mana_roll = random.random()
+                if is_boss or mana_roll < 0.35:
+                    mana_amt = random.randint(8, 18) if not is_boss else random.randint(25, 40)
+                    p.mana = min(p.max_mana, p.mana + mana_amt)
+                    self._add_fx(e.x, e.y - e.size - 26, f"+{mana_amt} MP", (80, 160, 255), 15)
                 # Drop loot
                 itm = e.drop_loot(luk_bonus=0)
                 if itm:
@@ -664,6 +685,10 @@ class GameManager:
             p._fire_boost_timer -= dt
             if p._fire_boost_timer <= 0:
                 p.aspd_mult = max(1.0, p.aspd_mult / 1.6)
+
+        # ── No-mana FX cooldown tick ───────────────────────────
+        if hasattr(p, '_no_mana_fx_cd') and p._no_mana_fx_cd > 0:
+            p._no_mana_fx_cd = max(0.0, p._no_mana_fx_cd - dt)
 
         # ── Player death ──────────────────────────────────────
         if not p.alive:

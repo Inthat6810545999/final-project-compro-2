@@ -80,7 +80,7 @@ class Player:
         self.passive = cfg.get("passive", "")
 
         self._armor_regen_timer = 0.0
-        self._mana_regen_timer  = 0.0
+        # No passive mana regen — mana is recovered by killing enemies
 
         # stat_points kept as 0 for UI compat
         self.stat_points = 0
@@ -203,10 +203,6 @@ class Player:
         self._armor_regen_timer += dt
         if self._armor_regen_timer > 1.0:
             self.armor = min(self.max_armor, self.armor + 12.0 * dt)
-
-        self._mana_regen_timer += dt
-        if self._mana_regen_timer > 0.2:
-            self.mana = min(self.max_mana, self.mana + 10 * dt)
 
     def draw(self, surface, cam_x=0, cam_y=0):
         sx = int(self.x - cam_x)

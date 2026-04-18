@@ -70,8 +70,8 @@ class Enemy:
             return
         dx /= d
         dy /= d
-        nx = self.x + dx * self.speed * 60 * dt
-        ny = self.y + dy * self.speed * 60 * dt
+        nx = self.x + dx * self.speed * 90 * dt
+        ny = self.y + dy * self.speed * 90 * dt
         if not self._collides(nx, self.y, walls):
             self.x = nx
         if not self._collides(self.x, ny, walls):

@@ -63,7 +63,7 @@ CLASSES = {
         "color": (240, 60, 120),
         "base_hp": 130,
         "max_armor": 80,
-        "max_mana": 130,
+        "max_mana": 100,
         "speed": 3.8,
         "base_damage": 16,
         "fire_rate": 0.75,
@@ -117,60 +117,65 @@ WEAPON_POOL = [
     # patterns: single | spread3 | spread5 | double | pierce | spread_random | burst3
 
     # ── COMMON ─────────────────────────────────────────────────────
+    # Soul Knight balance rule:  high fire-rate → low per-shot cost
+    #   single/common  ~2 mp/shot │ spread3 ~5 │ pierce ~4
     ("Hand Pistol",   14, 0.80, 11, "Common", LIGHT_GRAY, "Rapid single shots",        "Any", {},
-     {"pattern":"single",       "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,160,180), "pierce":False}),
+     {"pattern":"single",       "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,160,180), "pierce":False, "mana_cost":2}),
     ("Revolver",      18, 0.50, 10, "Common", GOLD,       "Heavy slow pistol",         "Any", {},
-     {"pattern":"single",       "bullet_color":(255,200,50),  "bullet_size":7,  "gun_shape":"revolver", "gun_color":(180,140,40),  "pierce":False}),
+     {"pattern":"single",       "bullet_color":(255,200,50),  "bullet_size":7,  "gun_shape":"revolver", "gun_color":(180,140,40),  "pierce":False, "mana_cost":3}),
     ("SMG",           10, 1.80, 13, "Common", CYAN,       "Ultra-rapid small shots",   "Any", {},
-     {"pattern":"single",       "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",      "gun_color":(40,120,160),  "pierce":False}),
+     {"pattern":"single",       "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",      "gun_color":(40,120,160),  "pierce":False, "mana_cost":1}),
     ("Sawed-Off",     20, 0.40, 8,  "Common", ORANGE,     "3-bullet shotgun spread",   "Any", {},
-     {"pattern":"spread3",      "bullet_color":(255,140,40),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(120,80,30),   "pierce":False}),
+     {"pattern":"spread3",      "bullet_color":(255,140,40),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(120,80,30),   "pierce":False, "mana_cost":5}),
     ("Hunting Rifle", 22, 0.45, 14, "Common", BROWN,      "Accurate single shot",      "Any", {},
-     {"pattern":"single",       "bullet_color":(200,160,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(100,60,20),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(200,160,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(100,60,20),   "pierce":False, "mana_cost":3}),
     ("Flare Gun",     16, 0.35, 7,  "Common", ORANGE,     "Slow burning flare",        "Any", {},
-     {"pattern":"single",       "bullet_color":(255,80,20),   "bullet_size":9,  "gun_shape":"pistol",   "gun_color":(160,80,40),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(255,80,20),   "bullet_size":9,  "gun_shape":"pistol",   "gun_color":(160,80,40),   "pierce":False, "mana_cost":4}),
 
     # ── RARE ───────────────────────────────────────────────────────
+    # rare single ~3-4 │ spread5 ~7 │ pierce ~6 │ double ~5
     ("AK-47",         24, 0.90, 13, "Rare",   GREEN,      "High fire rate rifle",      "Any", {},
-     {"pattern":"single",       "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(50,100,30),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(50,100,30),   "pierce":False, "mana_cost":3}),
     ("Shotgun",       28, 0.35, 9,  "Rare",   GRAY,       "5-bullet wide spread",      "Any", {},
-     {"pattern":"spread5",      "bullet_color":(220,180,80),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(80,80,80),    "pierce":False}),
+     {"pattern":"spread5",      "bullet_color":(220,180,80),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(80,80,80),    "pierce":False, "mana_cost":7}),
     ("Sniper Rifle",  40, 0.28, 22, "Rare",   LIGHT_GRAY, "Ultra-fast piercing shot",  "Any", {},
-     {"pattern":"pierce",       "bullet_color":(255,255,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(60,60,70),    "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(255,255,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(60,60,70),    "pierce":True,  "mana_cost":6}),
     ("Plasma Pistol", 30, 0.65, 14, "Rare",   CYAN,       "Glowing plasma bolts",      "Any", {},
-     {"pattern":"single",       "bullet_color":(0,220,255),   "bullet_size":7,  "gun_shape":"pistol",   "gun_color":(0,120,160),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(0,220,255),   "bullet_size":7,  "gun_shape":"pistol",   "gun_color":(0,120,160),   "pierce":False, "mana_cost":4}),
     ("Dual Pistols",  20, 0.70, 12, "Rare",   GOLD,       "Fires 2 bullets at once",   "Any", {},
-     {"pattern":"double",       "bullet_color":(255,220,60),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,120,30),  "pierce":False}),
+     {"pattern":"double",       "bullet_color":(255,220,60),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,120,30),  "pierce":False, "mana_cost":5}),
     ("Dart Gun",      26, 0.85, 13, "Rare",   PURPLE,     "Silent poison darts",       "Any", {},
-     {"pattern":"single",       "bullet_color":(180,60,220),  "bullet_size":4,  "gun_shape":"pistol",   "gun_color":(80,30,120),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(180,60,220),  "bullet_size":4,  "gun_shape":"pistol",   "gun_color":(80,30,120),   "pierce":False, "mana_cost":3}),
 
     # ── EPIC ───────────────────────────────────────────────────────
+    # epic single ~6-8 │ pierce ~8-9 │ burst3 ~5 (×3 bullets) │ minigun ~2 (very fast)
     ("Grenade Launcher",52, 0.40, 8,"Epic",   ORANGE,     "Slow heavy explosive shot", "Any", {},
-     {"pattern":"single",       "bullet_color":(255,100,0),   "bullet_size":12, "gun_shape":"launcher", "gun_color":(120,60,20),   "pierce":False}),
+     {"pattern":"single",       "bullet_color":(255,100,0),   "bullet_size":12, "gun_shape":"launcher", "gun_color":(120,60,20),   "pierce":False, "mana_cost":8}),
     ("Lightning Gun", 60, 0.60, 13, "Epic",   CYAN,       "Piercing electric bolt",    "Any", {},
-     {"pattern":"pierce",       "bullet_color":(100,220,255), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(20,80,120),   "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(100,220,255), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(20,80,120),   "pierce":True,  "mana_cost":8}),
     ("Railgun Mk1",   65, 0.30, 24, "Epic",   LIGHT_BLUE, "Hyper-fast armor-piercing", "Any", {},
-     {"pattern":"pierce",       "bullet_color":(180,230,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(30,60,100),   "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(180,230,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(30,60,100),   "pierce":True,  "mana_cost":9}),
     ("Assault Rifle", 28, 1.10, 14, "Epic",   GREEN,      "3-shot burst each trigger", "Any", {},
-     {"pattern":"burst3",       "bullet_color":(150,255,100), "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(40,80,30),    "pierce":False}),
+     {"pattern":"burst3",       "bullet_color":(150,255,100), "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(40,80,30),    "pierce":False, "mana_cost":5}),
     ("Laser Rifle",   55, 0.50, 20, "Epic",   RED,        "Thin fast laser beam",      "Any", {},
-     {"pattern":"pierce",       "bullet_color":(255,50,50),   "bullet_size":3,  "gun_shape":"sniper",   "gun_color":(120,20,20),   "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(255,50,50),   "bullet_size":3,  "gun_shape":"sniper",   "gun_color":(120,20,20),   "pierce":True,  "mana_cost":8}),
     ("Minigun",       18, 2.20, 12, "Epic",   YELLOW,     "Insane fire rate spray",    "Any", {},
-     {"pattern":"spread_random","bullet_color":(255,240,80),  "bullet_size":4,  "gun_shape":"minigun",  "gun_color":(100,100,40),  "pierce":False}),
+     {"pattern":"spread_random","bullet_color":(255,240,80),  "bullet_size":4,  "gun_shape":"minigun",  "gun_color":(100,100,40),  "pierce":False, "mana_cost":2}),
 
     # ── LEGENDARY ──────────────────────────────────────────────────
+    # legendary: 10-16 mp/shot — big power, big mana drain
     ("Void Cannon",   90, 0.60, 14, "Legendary", PURPLE,     "Huge void orb, pierces all","Any", {},
-     {"pattern":"pierce",       "bullet_color":(180,0,255),   "bullet_size":14, "gun_shape":"launcher", "gun_color":(80,0,120),    "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(180,0,255),   "bullet_size":14, "gun_shape":"launcher", "gun_color":(80,0,120),    "pierce":True,  "mana_cost":14}),
     ("Twin Blaster",  100,0.70, 14, "Legendary", LIGHT_BLUE, "2 massive energy bolts",   "Any", {},
-     {"pattern":"double",       "bullet_color":(80,180,255),  "bullet_size":10, "gun_shape":"launcher", "gun_color":(30,80,160),   "pierce":False}),
+     {"pattern":"double",       "bullet_color":(80,180,255),  "bullet_size":10, "gun_shape":"launcher", "gun_color":(30,80,160),   "pierce":False, "mana_cost":12}),
     ("Dragon Cannon", 80, 0.70, 13, "Legendary", RED,        "3 exploding fire shots",   "Any", {},
-     {"pattern":"spread3",      "bullet_color":(255,60,0),    "bullet_size":11, "gun_shape":"launcher", "gun_color":(140,30,0),    "pierce":False}),
+     {"pattern":"spread3",      "bullet_color":(255,60,0),    "bullet_size":11, "gun_shape":"launcher", "gun_color":(140,30,0),    "pierce":False, "mana_cost":12}),
     ("Wind Striker",  90, 0.90, 18, "Legendary", CYAN,       "Triple rapid shots",        "Any", {},
-     {"pattern":"burst3",       "bullet_color":(150,255,220), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(30,140,120),  "pierce":False}),
+     {"pattern":"burst3",       "bullet_color":(150,255,220), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(30,140,120),  "pierce":False, "mana_cost":10}),
     ("Railgun Mk2",   120,0.28, 28, "Legendary", LIGHT_BLUE, "Pierces entire map",        "Any", {},
-     {"pattern":"pierce",       "bullet_color":(220,240,255), "bullet_size":5,  "gun_shape":"sniper",   "gun_color":(20,40,80),    "pierce":True}),
+     {"pattern":"pierce",       "bullet_color":(220,240,255), "bullet_size":5,  "gun_shape":"sniper",   "gun_color":(20,40,80),    "pierce":True,  "mana_cost":16}),
     ("Infinity Blaster",95,0.85,15, "Legendary", GOLD,       "Endless golden double fire","Any", {},
-     {"pattern":"double",       "bullet_color":(255,200,0),   "bullet_size":9,  "gun_shape":"launcher", "gun_color":(140,100,0),   "pierce":True}),
+     {"pattern":"double",       "bullet_color":(255,200,0),   "bullet_size":9,  "gun_shape":"launcher", "gun_color":(140,100,0),   "pierce":True,  "mana_cost":13}),
 ]
 
 ARMOR_POOL = [

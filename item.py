@@ -94,7 +94,9 @@ class Weapon(Item):
             "gun_shape":    "pistol",
             "gun_color":    (160, 160, 180),
             "pierce":       False,
+            "mana_cost":    2,
         }
+        self.mana_cost = self.effect.get("mana_cost", 2)
 
     def can_equip(self, player):
         # Soul Knight style: any character can pick up any weapon
@@ -156,7 +158,7 @@ class Accessory(Item):
 def make_starting_weapon(char_class):
     """Return the starter weapon for Sausage Man."""
     _pistol_fx = {"pattern":"single", "bullet_color":(255,100,120), "bullet_size":6,
-                  "gun_shape":"pistol", "gun_color":(200,80,120), "pierce":False}
+                  "gun_shape":"pistol", "gun_color":(200,80,120), "pierce":False, "mana_cost":1}
     return Weapon("Sausage Gun", 14, 0.80, 10, "Common", (240, 60, 120),
                   "Rapid fire — tastes like victory", "Any", {}, _pistol_fx)
 
