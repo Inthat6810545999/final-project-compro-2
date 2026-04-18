@@ -361,6 +361,26 @@ class GameManager:
         self.e_bullets = []
         self.drops     = []
         self.fx        = []
+        # Assign each enemy a home_room so they stay in their own room
+        for e in self.enemies:
+            e.home_room = self.stage.get_room_at(e.x, e.y)
+
+    def _push_enemies_from_doors(self, room):
+        """Before closing doors: nudge any enemy on a door tile toward room centre."""
+        from constants import TILE
+        for dr in room.door_rects:
+            dr_cx = dr.x + dr.w / 2
+            dr_cy = dr.y + dr.h / 2
+            for e in self.enemies:
+                if not e.alive:
+                    continue
+                if (abs(e.x - dr_cx) < e.size + TILE and
+                        abs(e.y - dr_cy) < e.size + TILE):
+                    dx = room.cx - e.x
+                    dy = room.cy - e.y
+                    dist = math.hypot(dx, dy) or 1
+                    e.x += (dx / dist) * (TILE * 2.0 + e.size)
+                    e.y += (dy / dist) * (TILE * 2.0 + e.size)
 
     # ── Item pickup ──────────────────────────────────────────
     def _try_pickup(self):
@@ -457,18 +477,46 @@ class GameManager:
         if cur_room:
             alive_in_room = cur_room.enemies_alive_in(self.enemies)
             if alive_in_room:
-                # FIX: only close doors once player has fully cleared the
-                # door tiles (not still standing in the doorway).
+                # FIX 1: don't close if player is still standing in the doorway
                 player_in_doorway = any(
                     dr.inflate(p.RADIUS * 2, p.RADIUS * 2).collidepoint(p.x, p.y)
                     for dr in cur_room.door_rects
                 )
                 if not player_in_doorway:
+                    # FIX 2: push any enemy that overlaps a door tile into the room
+                    #         so they never get clipped inside the wall
+                    for e in self.enemies:
+                        if not e.alive:
+                            continue
+                        for dr in cur_room.door_rects:
+                            if math.hypot(e.x - dr.centerx, e.y - dr.centery) < e.size + 24:
+                                # Nudge toward room centre
+                                ddx = cur_room.cx - e.x
+                                ddy = cur_room.cy - e.y
+                                dist = math.hypot(ddx, ddy) or 1
+                                e.x += (ddx / dist) * (e.size + 28)
+                                e.y += (ddy / dist) * (e.size + 28)
                     self.stage.close_room_doors(cur_room)
             else:
                 if not cur_room.doors_open:
                     self.stage.open_room_doors(cur_room)
                 cur_room.cleared = True
+
+        # ── ห้องใครห้องมัน: keep enemies inside their home room ──
+        from constants import TILE as _TILE
+        for e in self.enemies:
+            hr = getattr(e, "home_room", None)
+            if hr is None or hr.doors_open or not hr.door_rects:
+                continue
+            # If enemy drifted onto (or through) a closed door tile, push back
+            for dr in hr.door_rects:
+                if math.hypot(e.x - dr.centerx, e.y - dr.centery) < e.size + _TILE:
+                    ddx = hr.cx - e.x
+                    ddy = hr.cy - e.y
+                    dist = math.hypot(ddx, ddy) or 1
+                    e.x += (ddx / dist) * (_TILE + e.size)
+                    e.y += (ddy / dist) * (_TILE + e.size)
+                    break
 
         # ── Shooting / melee input ────────────────────────────
         # FIX: shoot_cooldown always ticks — moved outside if/else

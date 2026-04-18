@@ -72,8 +72,9 @@ class BSPNode:
             if ra and rb:
                 ax, ay = ra.centerx, ra.centery
                 bx, by = rb.centerx, rb.centery
-                corridors.append(pygame.Rect(min(ax,bx), ay-1, abs(ax-bx)+1, 2))
-                corridors.append(pygame.Rect(bx-1, min(ay,by), 2, abs(ay-by)+1))
+                # FIX: 3-tile-wide corridors so player & enemies never jam
+                corridors.append(pygame.Rect(min(ax,bx), ay-1, abs(ax-bx)+1, 3))
+                corridors.append(pygame.Rect(bx-1, min(ay,by), 3, abs(ay-by)+1))
         return corridors
 
 
@@ -200,52 +201,81 @@ class Room:
             sy = dr.y - int(cam_y)
             w, h = dr.w, dr.h
 
-            # ── Background: dark stone ────────────────────────
-            pygame.draw.rect(surface, (18, 12, 12), (sx, sy, w, h))
+            # ── Deep black background ──────────────────────────
+            pygame.draw.rect(surface, (10, 6, 4), (sx, sy, w, h))
 
-            # ── Outer stone frame ─────────────────────────────
-            frame_col = (70, 55, 38)
-            frame_hi  = (110, 85, 52)
-            pygame.draw.rect(surface, frame_col, (sx, sy, w, h), 5)
-            pygame.draw.rect(surface, frame_hi,  (sx+1, sy+1, w-2, h-2), 1)
+            # ── Amber/gold colour palette (matches image 1) ────
+            pulse   = math.sin(t * 2.2) * 0.08 + 0.92    # 0.84 – 1.0
+            DARK    = (int(70  * pulse), int(42  * pulse), int(12 * pulse))
+            MID     = (int(140 * pulse), int(88  * pulse), int(28 * pulse))
+            HI      = (int(210 * pulse), int(145 * pulse), int(52 * pulse))
+            BRIGHT  = (int(245 * pulse), int(195 * pulse), int(90 * pulse))
+            OUTLINE = (int(185 * pulse), int(125 * pulse), int(40 * pulse))
 
-            # ── Vertical iron bars ────────────────────────────
-            pulse    = math.sin(t * 2.5) * 0.12 + 0.88   # 0.76 – 1.0
-            bar_dark = (50, 55, 65)
-            bar_mid  = (int(100 * pulse), int(108 * pulse), int(125 * pulse))
-            bar_hi   = (int(170 * pulse), int(185 * pulse), int(210 * pulse))
+            # ── Outer frame ────────────────────────────────────
+            pygame.draw.rect(surface, OUTLINE, (sx, sy, w, h), 3)
+            # Top bevel highlight
+            pygame.draw.line(surface, BRIGHT, (sx+2, sy+1), (sx+w-3, sy+1), 1)
+            pygame.draw.line(surface, BRIGHT, (sx+1, sy+1), (sx+1, sy+h-2), 1)
 
-            num_bars = 3
-            bar_w    = 5
-            inner_w  = w - 10
-            spacing  = inner_w // (num_bars + 1)
+            # ── Vertical planks ────────────────────────────────
+            plank_num = max(2, w // 12)
+            plank_w   = max(6, (w - 4) // plank_num)
 
-            for i in range(num_bars):
-                bx = sx + 5 + spacing * (i + 1) - bar_w // 2
-                # Shadow side
-                pygame.draw.rect(surface, bar_dark, (bx,   sy+5, bar_w,   h-10), border_radius=2)
-                # Main bar
-                pygame.draw.rect(surface, bar_mid,  (bx,   sy+5, bar_w-1, h-10), border_radius=2)
-                # Highlight streak
-                pygame.draw.rect(surface, bar_hi,   (bx+1, sy+6, 2,       h-12), border_radius=1)
-                # Rivets (top & bottom)
-                for ry_off in [h // 5, 4 * h // 5]:
-                    cx = bx + bar_w // 2
-                    cy = sy + ry_off
-                    pygame.draw.circle(surface, bar_mid, (cx, cy), 4)
-                    pygame.draw.circle(surface, bar_hi,  (cx-1, cy-1), 2)
+            for i in range(plank_num):
+                px = sx + 2 + i * plank_w
+                pw = plank_w - 2
+                if pw <= 0:
+                    continue
 
-            # ── Horizontal crossbar (centre) ──────────────────
-            cross_y = sy + h // 2 - 2
-            pygame.draw.rect(surface, bar_dark, (sx+5, cross_y,   w-10, 6), border_radius=2)
-            pygame.draw.rect(surface, bar_mid,  (sx+5, cross_y,   w-11, 5), border_radius=2)
-            pygame.draw.rect(surface, bar_hi,   (sx+6, cross_y+1, w-13, 2))
+                # Body
+                pygame.draw.rect(surface, MID,  (px, sy+3, pw, h-6))
+                # Left highlight
+                pygame.draw.rect(surface, HI,   (px+1, sy+4, max(1, pw//3), h-8))
+                # Right shadow
+                pygame.draw.rect(surface, DARK, (px+pw-2, sy+3, 2, h-6))
+                # Subtle grain lines
+                for gy in range(sy+10, sy+h-4, 8):
+                    pygame.draw.line(surface, DARK, (px+2, gy), (px+pw-3, gy), 1)
 
-            # ── Red warning glow border (pulsing) ─────────────
-            glow_a = int(70 + math.sin(t * 3) * 45)
-            glow_surf = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surf, (200, 30, 30, glow_a), (0, 0, w, h), 3, border_radius=2)
-            surface.blit(glow_surf, (sx, sy))
+                # ── Spike top (↑ pointing up, like image 1) ────
+                half = max(2, pw // 2 - 1)
+                tx   = px + pw // 2
+                pts_top = [
+                    (tx,          sy + 1),           # tip
+                    (tx - half,   sy + 3 + half),    # bottom-left
+                    (tx + half,   sy + 3 + half),    # bottom-right
+                ]
+                pygame.draw.polygon(surface, HI,     pts_top)
+                pygame.draw.polygon(surface, BRIGHT, pts_top, 1)
+
+                # ── Spike bottom (↓) ───────────────────────────
+                pts_bot = [
+                    (tx,          sy + h - 1),
+                    (tx - half,   sy + h - 3 - half),
+                    (tx + half,   sy + h - 3 - half),
+                ]
+                pygame.draw.polygon(surface, HI,     pts_bot)
+                pygame.draw.polygon(surface, BRIGHT, pts_bot, 1)
+
+                # ── Circular rivet in the middle of each plank ─
+                ry = sy + h // 2
+                pygame.draw.circle(surface, DARK,   (tx, ry), 4)
+                pygame.draw.circle(surface, BRIGHT, (tx - 1, ry - 1), 2)
+
+            # ── Centre crossbar ────────────────────────────────
+            beam_y = sy + h // 2 - 3
+            pygame.draw.rect(surface, DARK,  (sx+2, beam_y,   w-4, 7))
+            pygame.draw.rect(surface, MID,   (sx+3, beam_y+1, w-6, 5))
+            pygame.draw.rect(surface, BRIGHT,(sx+4, beam_y+1, w-8, 2))
+
+            # ── Pulsing red warning glow on border ─────────────
+            glow_a = int(55 + math.sin(t * 3.2) * 38)
+            glow_s = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(glow_s, (220, 30, 30, glow_a), (0, 0, w, h), 3)
+            surface.blit(glow_s, (sx, sy))
+
+
 
 
 
