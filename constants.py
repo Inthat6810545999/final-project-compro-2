@@ -118,105 +118,105 @@ WEAPON_POOL = [
     #   Common ~22-32 │ Rare ~38-55 │ Epic ~65-110 │ Legendary ~110-180
     # Spread/burst weapons: per-pellet dmg × pellets × rate ≈ target DPS
     # Mana cost: 1-2 (very fast) │ 3-4 (normal) │ 5-7 (spread) │ 8-12 (epic) │ 12-16 (legendary)
+    # shake: (magnitude_px, duration_sec) — tuned per weapon feel
 
     # ── COMMON ──────────────────────────────────────────────────────
     ("Hand Pistol",   12, 2.00, 12, "Common", LIGHT_GRAY, "Snappy starter pistol",     "Any", {},
-     {"pattern":"single",       "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,160,180), "pierce":False, "mana_cost":2}),
-    # DPS: 12×2.0 = 24
+     {"pattern":"single",       "bullet_color":(255,230,80),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,160,180), "pierce":False, "mana_cost":2,  "shake":(3, 0.08)}),
 
     ("Revolver",      32, 0.65, 12, "Common", GOLD,       "Slow but hits hard",        "Any", {},
-     {"pattern":"single",       "bullet_color":(255,200,50),  "bullet_size":8,  "gun_shape":"revolver", "gun_color":(180,140,40),  "pierce":False, "mana_cost":3}),
-    # DPS: 32×0.65 = 20.8 (lower DPS but high burst)
+     {"pattern":"single",       "bullet_color":(255,200,50),  "bullet_size":8,  "gun_shape":"revolver", "gun_color":(180,140,40),  "pierce":False, "mana_cost":3,  "shake":(5, 0.15)}),
 
     ("SMG",            7, 5.00, 14, "Common", CYAN,       "Ultra-rapid spray",         "Any", {},
-     {"pattern":"single",       "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",      "gun_color":(40,120,160),  "pierce":False, "mana_cost":1}),
-    # DPS: 7×5.0 = 35 (high rate compensates low dmg)
+     {"pattern":"single",       "bullet_color":(80,220,255),  "bullet_size":4,  "gun_shape":"smg",      "gun_color":(40,120,160),  "pierce":False, "mana_cost":1,  "shake":(1, 0.05)}),
 
     ("Sawed-Off",     18, 0.55, 9,  "Common", ORANGE,     "3-pellet close range blast","Any", {},
      {"pattern":"spread3",      "bullet_color":(255,140,40),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(120,80,30),   "pierce":False, "mana_cost":5}),
     # DPS: 18×3×0.55 = 29.7
 
     ("Hunting Rifle", 28, 0.80, 17, "Common", BROWN,      "Accurate medium-range shot","Any", {},
-     {"pattern":"single",       "bullet_color":(200,160,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(100,60,20),   "pierce":False, "mana_cost":3}),
-    # DPS: 28×0.80 = 22.4
+     {"pattern":"single",       "bullet_color":(200,160,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(100,60,20),   "pierce":False, "mana_cost":3,  "shake":(4, 0.12)}),
 
     ("Flare Gun",     22, 0.40,  7, "Common", ORANGE,     "Slow scorching flare",      "Any", {},
-     {"pattern":"single",       "bullet_color":(255,80,20),   "bullet_size":10, "gun_shape":"pistol",   "gun_color":(160,80,40),   "pierce":False, "mana_cost":4}),
-    # DPS: 22×0.40 = 8.8 (low DPS, large bullet — niche/fun)
+     {"pattern":"single",       "bullet_color":(255,80,20),   "bullet_size":10, "gun_shape":"pistol",   "gun_color":(160,80,40),   "pierce":False, "mana_cost":4,  "shake":(4, 0.12)}),
+
+    # ── COMMON LASER ────────────────────────────────────────────────
+    ("Laser Pistol",  18, 1.60,  0, "Common", RED,        "Instant laser beam, low dmg","Any", {},
+     {"pattern":"laser",        "bullet_color":(255,60,60),   "bullet_size":2,  "gun_shape":"pistol",   "gun_color":(180,20,20),   "pierce":True,  "mana_cost":3,  "shake":(2, 0.09),
+      "laser_color":(255,80,80),   "laser_width":2,  "laser_lifetime":0.14}),
+    # DPS: 18×1.6 = 28.8 (instant hit, no travel time — tuned down slightly)
 
     # ── RARE ────────────────────────────────────────────────────────
     ("AK-47",         16, 3.00, 14, "Rare",   GREEN,      "High-rate assault rifle",   "Any", {},
-     {"pattern":"single",       "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(50,100,30),   "pierce":False, "mana_cost":2}),
-    # DPS: 16×3.0 = 48
+     {"pattern":"single",       "bullet_color":(180,255,80),  "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(50,100,30),   "pierce":False, "mana_cost":2,  "shake":(2, 0.06)}),
 
     ("Shotgun",       20, 0.45, 10, "Rare",   GRAY,       "5-pellet wide spread",      "Any", {},
-     {"pattern":"spread5",      "bullet_color":(220,180,80),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(80,80,80),    "pierce":False, "mana_cost":7}),
-    # DPS: 20×5×0.45 = 45
+     {"pattern":"spread5",      "bullet_color":(220,180,80),  "bullet_size":6,  "gun_shape":"shotgun",  "gun_color":(80,80,80),    "pierce":False, "mana_cost":7,  "shake":(7, 0.18)}),
 
     ("Sniper Rifle",  60, 0.35, 26, "Rare",   LIGHT_GRAY, "Piercing long-range shot",  "Any", {},
-     {"pattern":"pierce",       "bullet_color":(255,255,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(60,60,70),    "pierce":True,  "mana_cost":6}),
-    # DPS: 60×0.35 = 21 (low sustain, high single-target burst + pierce)
+     {"pattern":"pierce",       "bullet_color":(255,255,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(60,60,70),    "pierce":True,  "mana_cost":6,  "shake":(8, 0.22)}),
 
     ("Plasma Pistol", 28, 1.20, 15, "Rare",   CYAN,       "Plasma bolts, decent rate", "Any", {},
-     {"pattern":"single",       "bullet_color":(0,220,255),   "bullet_size":7,  "gun_shape":"pistol",   "gun_color":(0,120,160),   "pierce":False, "mana_cost":4}),
-    # DPS: 28×1.2 = 33.6
+     {"pattern":"single",       "bullet_color":(0,220,255),   "bullet_size":7,  "gun_shape":"pistol",   "gun_color":(0,120,160),   "pierce":False, "mana_cost":4,  "shake":(3, 0.09)}),
 
     ("Dual Pistols",  14, 1.50, 13, "Rare",   GOLD,       "2 bullets per shot",        "Any", {},
-     {"pattern":"double",       "bullet_color":(255,220,60),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,120,30),  "pierce":False, "mana_cost":4}),
-    # DPS: 14×2×1.5 = 42
+     {"pattern":"double",       "bullet_color":(255,220,60),  "bullet_size":5,  "gun_shape":"pistol",   "gun_color":(160,120,30),  "pierce":False, "mana_cost":4,  "shake":(3, 0.09)}),
 
     ("Dart Gun",      20, 2.20, 15, "Rare",   PURPLE,     "Rapid silent darts",        "Any", {},
-     {"pattern":"single",       "bullet_color":(180,60,220),  "bullet_size":4,  "gun_shape":"pistol",   "gun_color":(80,30,120),   "pierce":False, "mana_cost":2}),
-    # DPS: 20×2.2 = 44
+     {"pattern":"single",       "bullet_color":(180,60,220),  "bullet_size":4,  "gun_shape":"pistol",   "gun_color":(80,30,120),   "pierce":False, "mana_cost":2,  "shake":(1, 0.05)}),
+
+    # ── RARE LASER ──────────────────────────────────────────────────
+    ("Laser Carbine", 32, 1.20,  0, "Rare",   CYAN,       "Rapid cyan laser beam",     "Any", {},
+     {"pattern":"laser",        "bullet_color":(0,255,220),   "bullet_size":2,  "gun_shape":"rifle",    "gun_color":(0,140,130),   "pierce":True,  "mana_cost":4,  "shake":(3, 0.10),
+      "laser_color":(0,240,210),   "laser_width":3,  "laser_lifetime":0.15}),
+    # DPS: 32×1.2 = 38.4
 
     # ── EPIC ────────────────────────────────────────────────────────
     ("Grenade Launcher",65, 0.45, 8, "Epic",  ORANGE,     "Huge explosive slug",       "Any", {},
-     {"pattern":"single",       "bullet_color":(255,100,0),   "bullet_size":14, "gun_shape":"launcher", "gun_color":(120,60,20),   "pierce":False, "mana_cost":8}),
-    # DPS: 65×0.45 = 29.25 (low DPS but massive single hit / area)
+     {"pattern":"single",       "bullet_color":(255,100,0),   "bullet_size":14, "gun_shape":"launcher", "gun_color":(120,60,20),   "pierce":False, "mana_cost":8,  "shake":(10, 0.28)}),
 
     ("Lightning Gun", 55, 0.75, 14, "Epic",   CYAN,       "Piercing electric bolt",    "Any", {},
-     {"pattern":"pierce",       "bullet_color":(100,220,255), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(20,80,120),   "pierce":True,  "mana_cost":8}),
-    # DPS: 55×0.75 = 41.25 + pierce bonus
+     {"pattern":"pierce",       "bullet_color":(100,220,255), "bullet_size":6,  "gun_shape":"rifle",    "gun_color":(20,80,120),   "pierce":True,  "mana_cost":8,  "shake":(5, 0.14)}),
 
     ("Railgun Mk1",   72, 0.32, 26, "Epic",   LIGHT_BLUE, "Hyper-fast armor-piercing", "Any", {},
-     {"pattern":"pierce",       "bullet_color":(180,230,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(30,60,100),   "pierce":True,  "mana_cost":9}),
-    # DPS: 72×0.32 = 23 (pierce + burst)
+     {"pattern":"pierce",       "bullet_color":(180,230,255), "bullet_size":4,  "gun_shape":"sniper",   "gun_color":(30,60,100),   "pierce":True,  "mana_cost":9,  "shake":(9, 0.24)}),
 
     ("Assault Rifle", 22, 2.00, 15, "Epic",   GREEN,      "3-shot burst, rapid fire",  "Any", {},
-     {"pattern":"burst3",       "bullet_color":(150,255,100), "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(40,80,30),    "pierce":False, "mana_cost":4}),
-    # DPS: 22×3×(1/cooldown) ≈ burst heavy
+     {"pattern":"burst3",       "bullet_color":(150,255,100), "bullet_size":5,  "gun_shape":"rifle",    "gun_color":(40,80,30),    "pierce":False, "mana_cost":4,  "shake":(3, 0.08)}),
 
-    ("Laser Rifle",   50, 0.60, 22, "Epic",   RED,        "Thin fast piercing laser",  "Any", {},
-     {"pattern":"pierce",       "bullet_color":(255,50,50),   "bullet_size":3,  "gun_shape":"sniper",   "gun_color":(120,20,20),   "pierce":True,  "mana_cost":8}),
-    # DPS: 50×0.60 = 30 + pierce
+    # ── EPIC LASER — replaces old pierce "Laser Rifle" ──────────────
+    ("Laser Rifle",   50, 0.60,  0, "Epic",   RED,        "Instant piercing red laser","Any", {},
+     {"pattern":"laser",        "bullet_color":(255,30,30),   "bullet_size":3,  "gun_shape":"sniper",   "gun_color":(120,20,20),   "pierce":True,  "mana_cost":8,  "shake":(6, 0.16),
+      "laser_color":(255,50,50),   "laser_width":4,  "laser_lifetime":0.17}),
+    # DPS: 50×0.60 = 30 (instant) + pierce all enemies in line
 
     ("Minigun",       10, 8.00, 13, "Epic",   YELLOW,     "Insane fire rate, slight spread","Any", {},
-     {"pattern":"spread_random","bullet_color":(255,240,80),  "bullet_size":4,  "gun_shape":"minigun",  "gun_color":(100,100,40),  "pierce":False, "mana_cost":1}),
-    # DPS: 10×8.0 = 80 (spread lowers effective DPS)
+     {"pattern":"spread_random","bullet_color":(255,240,80),  "bullet_size":4,  "gun_shape":"minigun",  "gun_color":(100,100,40),  "pierce":False, "mana_cost":1,  "shake":(2, 0.04)}),
 
     # ── LEGENDARY ───────────────────────────────────────────────────
     ("Void Cannon",   95, 0.65, 14, "Legendary", PURPLE,     "Void orb, pierces all",     "Any", {},
-     {"pattern":"pierce",       "bullet_color":(180,0,255),   "bullet_size":15, "gun_shape":"launcher", "gun_color":(80,0,120),    "pierce":True,  "mana_cost":14}),
-    # DPS: 95×0.65 = 61.75 + pierce
+     {"pattern":"pierce",       "bullet_color":(180,0,255),   "bullet_size":15, "gun_shape":"launcher", "gun_color":(80,0,120),    "pierce":True,  "mana_cost":14, "shake":(11, 0.28)}),
 
     ("Twin Blaster",  80, 0.80, 14, "Legendary", LIGHT_BLUE, "2 massive energy bolts",    "Any", {},
-     {"pattern":"double",       "bullet_color":(80,180,255),  "bullet_size":11, "gun_shape":"launcher", "gun_color":(30,80,160),   "pierce":False, "mana_cost":12}),
-    # DPS: 80×2×0.80 = 128
+     {"pattern":"double",       "bullet_color":(80,180,255),  "bullet_size":11, "gun_shape":"launcher", "gun_color":(30,80,160),   "pierce":False, "mana_cost":12, "shake":(8, 0.22)}),
 
     ("Dragon Cannon", 75, 0.75, 13, "Legendary", RED,        "3 exploding fire shots",    "Any", {},
-     {"pattern":"spread3",      "bullet_color":(255,60,0),    "bullet_size":12, "gun_shape":"launcher", "gun_color":(140,30,0),    "pierce":False, "mana_cost":12}),
-    # DPS: 75×3×0.75 = 168.75
+     {"pattern":"spread3",      "bullet_color":(255,60,0),    "bullet_size":12, "gun_shape":"launcher", "gun_color":(140,30,0),    "pierce":False, "mana_cost":12, "shake":(9, 0.24)}),
 
     ("Wind Striker",  70, 1.20, 20, "Legendary", CYAN,       "Rapid burst — triple shots","Any", {},
-     {"pattern":"burst3",       "bullet_color":(150,255,220), "bullet_size":7,  "gun_shape":"rifle",    "gun_color":(30,140,120),  "pierce":False, "mana_cost":10}),
+     {"pattern":"burst3",       "bullet_color":(150,255,220), "bullet_size":7,  "gun_shape":"rifle",    "gun_color":(30,140,120),  "pierce":False, "mana_cost":10, "shake":(5, 0.12)}),
 
     ("Railgun Mk2",  130, 0.30, 30, "Legendary", LIGHT_BLUE, "Pierces entire map",        "Any", {},
-     {"pattern":"pierce",       "bullet_color":(220,240,255), "bullet_size":5,  "gun_shape":"sniper",   "gun_color":(20,40,80),    "pierce":True,  "mana_cost":16}),
-    # DPS: 130×0.30 = 39 + all pierce
+     {"pattern":"pierce",       "bullet_color":(220,240,255), "bullet_size":5,  "gun_shape":"sniper",   "gun_color":(20,40,80),    "pierce":True,  "mana_cost":16, "shake":(12, 0.30)}),
 
     ("Infinity Blaster",85,1.00, 16, "Legendary", GOLD,      "Golden double, all pierce", "Any", {},
-     {"pattern":"double",       "bullet_color":(255,200,0),   "bullet_size":10, "gun_shape":"launcher", "gun_color":(140,100,0),   "pierce":True,  "mana_cost":13}),
-    # DPS: 85×2×1.0 = 170
+     {"pattern":"double",       "bullet_color":(255,200,0),   "bullet_size":10, "gun_shape":"launcher", "gun_color":(140,100,0),   "pierce":True,  "mana_cost":13, "shake":(9, 0.24)}),
+
+    # ── LEGENDARY LASER — dual beam, max drama ───────────────────────
+    ("Photon Cannon", 90, 0.70,  0, "Legendary", GOLD,       "Twin gold laser beams",     "Any", {},
+     {"pattern":"laser_double", "bullet_color":(255,220,0),   "bullet_size":4,  "gun_shape":"launcher", "gun_color":(160,120,0),   "pierce":True,  "mana_cost":14, "shake":(10, 0.26),
+      "laser_color":(255,230,60),  "laser_width":5,  "laser_lifetime":0.20}),
+    # DPS: 90×2×0.70 = 126 (twin beams, both pierce)
 ]
 
 ARMOR_POOL = [

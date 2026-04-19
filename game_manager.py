@@ -26,7 +26,7 @@ from constants import (
 from player        import Player
 from stage         import Stage
 from enemy         import EnemyBullet
-from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal
+from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal, LaserBeam
 from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
                            ShopScreen, PauseScreen, GameOverScreen,
@@ -692,14 +692,92 @@ class GameManager:
                             p._burst_timer   = 0.0
                             p._burst_angle   = angle
                             p._burst_args    = (spd, pierce, col, bsz, barrel_offset)
+
+                        # ── LASER patterns — instant hitscan ──────────
+                        elif pat in ("laser", "laser_double"):
+                            laser_col     = fx.get("laser_color", col)
+                            laser_width   = fx.get("laser_width", 3)
+                            laser_life    = fx.get("laser_lifetime", 0.16)
+                            laser_range   = 1400          # max beam reach in pixels
+
+                            def _fire_laser_beam(ang):
+                                """Cast a ray, deal dmg to all enemies hit, spawn LaserBeam FX."""
+                                ddx = math.cos(ang); ddy = math.sin(ang)
+                                ox  = p.x + ddx * barrel_offset
+                                oy  = p.y + ddy * barrel_offset
+
+                                # --- Ray-march to first wall or map edge ---
+                                end_x, end_y = ox + ddx * laser_range, oy + ddy * laser_range
+                                step = 12
+                                steps_n = int(laser_range / step)
+                                hit_wall = False
+                                for si in range(1, steps_n + 1):
+                                    rx = ox + ddx * step * si
+                                    ry = oy + ddy * step * si
+                                    for wall in walls:
+                                        if wall.collidepoint(rx, ry):
+                                            end_x = rx - ddx * step
+                                            end_y = ry - ddy * step
+                                            hit_wall = True
+                                            break
+                                    if hit_wall:
+                                        break
+                                    # Map edge check
+                                    from constants import TILE as _T, MAP_W as _MW, MAP_H as _MH
+                                    if rx < 0 or rx > _MW * _T or ry < 0 or ry > _MH * _T:
+                                        end_x, end_y = rx, ry
+                                        break
+
+                                # --- Hit all enemies along the beam ---
+                                hit_enemies = set()
+                                blen = math.hypot(end_x - ox, end_y - oy)
+                                for e in self.enemies:
+                                    if not e.alive:
+                                        continue
+                                    # Project enemy onto beam line
+                                    ex = e.x - ox; ey = e.y - oy
+                                    t_proj = ex * ddx + ey * ddy
+                                    if t_proj < 0 or t_proj > blen:
+                                        continue
+                                    perp_dist = abs(ex * ddy - ey * ddx)
+                                    if perp_dist < e.size + laser_width + 2:
+                                        d_val, crit_v = p.calc_damage()
+                                        actual = e.take_damage(d_val)
+                                        hit_enemies.add(id(e))
+                                        c_col  = GOLD if crit_v else WHITE
+                                        label  = f"{'CRIT! ' if crit_v else ''}{actual}"
+                                        self._add_fx(e.x, e.y - e.size, label, c_col)
+                                        self.tracker.log_event("damage", {
+                                            "amount": actual, "is_crit": crit_v,
+                                            "enemy_type": e.enemy_type
+                                        })
+
+                                # Spawn visual beam
+                                self.bullets.append(
+                                    LaserBeam(ox, oy, end_x, end_y,
+                                              color=laser_col,
+                                              width=laser_width,
+                                              lifetime=laser_life)
+                                )
+
+                            _fire_laser_beam(angle)
+                            if pat == "laser_double":
+                                _fire_laser_beam(angle + 0.09)
+                                _fire_laser_beam(angle - 0.09)
+
                         else:
                             _spawn_bullet(angle)
 
                         p.shoot_cooldown = (1.0 / max(0.1, p.get_fire_rate())) / frenzy_mult
-                        # Screen shake during frenzy
+
+                        # ── Per-weapon screen shake ────────────────────
+                        shake_mag, shake_dur = fx.get("shake", (3, 0.10))
                         if frenzy_mult > 1.0:
-                            self.shake_timer = max(self.shake_timer, 0.12)
-                            self.shake_mag   = 6
+                            shake_mag = int(shake_mag * 1.5)
+                            shake_dur = max(shake_dur, 0.12)
+                        if shake_mag > 0:
+                            self.shake_timer = max(self.shake_timer, shake_dur)
+                            self.shake_mag   = max(self.shake_mag,   shake_mag)
 
         # ── Burst queue flush (burst3 follow-up shots) ─────────
         if getattr(p, '_burst_queue', 0) > 0:
@@ -724,6 +802,10 @@ class GameManager:
             b.update(dt, walls)
             if not b.alive:
                 self.bullets.remove(b)
+                continue
+
+            # LaserBeam is a pure visual — skip collision checks
+            if isinstance(b, LaserBeam):
                 continue
 
             # ── ROOM BARRIER: bullet enters a room the player isn't in → stop ──

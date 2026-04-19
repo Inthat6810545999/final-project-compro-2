@@ -56,6 +56,72 @@ class Bullet:
 
 
 # ─────────────────────────────────────────────────────────────
+class LaserBeam:
+    """
+    Instant hit-scan laser beam — visual effect only.
+    Damage is applied immediately on creation; this class just renders the beam.
+    Lifetime ~0.18 s then fades out.
+    """
+
+    def __init__(self, x1, y1, x2, y2, color=(255, 60, 60), width=3, lifetime=0.18):
+        self.x1      = float(x1)
+        self.y1      = float(y1)
+        self.x2      = float(x2)
+        self.y2      = float(y2)
+        self.color   = color
+        self.width   = width
+        self.life    = lifetime
+        self.max_life = lifetime
+        self.alive   = True
+
+    def update(self, dt, walls=None):
+        self.life -= dt
+        if self.life <= 0:
+            self.alive = False
+
+    def draw(self, surface, cam_x=0, cam_y=0):
+        if not self.alive:
+            return
+        alpha_ratio = self.life / self.max_life          # 1 → 0
+        alpha       = int(255 * alpha_ratio)
+
+        sx1 = int(self.x1 - cam_x)
+        sy1 = int(self.y1 - cam_y)
+        sx2 = int(self.x2 - cam_x)
+        sy2 = int(self.y2 - cam_y)
+
+        length  = math.hypot(sx2 - sx1, sy2 - sy1)
+        if length < 1:
+            return
+
+        # ── Outer glow layer (wide, faint) ───────────────────
+        glow_w = self.width * 4
+        glow_col = (*self.color, max(0, int(alpha * 0.35)))
+        beam_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.line(beam_surf, glow_col, (sx1, sy1), (sx2, sy2), glow_w)
+
+        # ── Mid layer ─────────────────────────────────────────
+        mid_col = (*self.color, max(0, int(alpha * 0.75)))
+        pygame.draw.line(beam_surf, mid_col, (sx1, sy1), (sx2, sy2), max(1, self.width))
+
+        # ── Core (white-hot centre) ───────────────────────────
+        core_col = (min(255, self.color[0] + 80),
+                    min(255, self.color[1] + 80),
+                    min(255, self.color[2] + 80), alpha)
+        pygame.draw.line(beam_surf, core_col, (sx1, sy1), (sx2, sy2), max(1, self.width - 1))
+
+        surface.blit(beam_surf, (0, 0))
+
+        # ── Impact flash at end point ─────────────────────────
+        if alpha_ratio > 0.6:
+            flash_r = int((self.width + 4) * alpha_ratio)
+            flash_surf = pygame.Surface((flash_r * 4, flash_r * 4), pygame.SRCALPHA)
+            pygame.draw.circle(flash_surf, (*self.color, int(alpha * 0.8)),
+                               (flash_r * 2, flash_r * 2), flash_r * 2)
+            surface.blit(flash_surf, (sx2 - flash_r * 2, sy2 - flash_r * 2))
+
+
+# ─────────────────────────────────────────────────────────────
 class DroppedItem:
     """Item lying on the floor waiting to be picked up."""
 

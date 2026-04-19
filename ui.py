@@ -871,6 +871,52 @@ class ShootingRangeScreen:
             self._burst_spd = spd
             self._spawn(ang, col, sz, spd, False, crit, dmg)
             self.burst_left -= 1
+
+        # ── LASER: instant hitscan ─────────────────────────────
+        elif pat in ("laser", "laser_double"):
+            from bullet import LaserBeam
+            laser_col   = fx.get("laser_color",   col)
+            laser_width = fx.get("laser_width",   3)
+            laser_life  = fx.get("laser_lifetime", 0.16)
+            laser_range = 1200
+
+            def _fire_range_laser(beam_ang):
+                ddx = math.cos(beam_ang); ddy = math.sin(beam_ang)
+                ox  = self.px + ddx * 32
+                oy  = self.py + ddy * 32
+                end_x = ox + ddx * laser_range
+                end_y = oy + ddy * laser_range
+                blen = math.hypot(end_x - ox, end_y - oy)
+                for tgt in self.targets:
+                    ex = tgt["x"] - ox; ey = tgt["y"] - oy
+                    t_proj = ex * ddx + ey * ddy
+                    if t_proj < 0 or t_proj > blen:
+                        continue
+                    perp = abs(ex * ddy - ey * ddx)
+                    if perp < tgt["r"] + laser_width + 2:
+                        tgt["hit_flash"] = 0.15
+                        tgt["hp"] = max(0, tgt["hp"] - dmg)
+                        if tgt["hp"] <= 0:
+                            tgt["hp"] = tgt["max_hp"]
+                        self.total_dmg += dmg
+                        self.total_hits += 1
+                        self._dps_log.append([self._elapsed, dmg])
+                        label = ("CRIT! " if crit else "") + str(dmg)
+                        self.floats.append({"x": tgt["x"] + self._rnd.randint(-20, 20),
+                                            "y": tgt["y"] - 40, "text": label,
+                                            "life": 1.0, "crit": crit})
+                        wpn_name = wpn.name if wpn else "?"
+                        self.last_msg = ("CRITICAL! " if crit else "") + f"Hit {dmg} with {wpn_name}"
+                self.bullets.append(LaserBeam(ox, oy, end_x, end_y,
+                                              color=laser_col,
+                                              width=laser_width,
+                                              lifetime=laser_life))
+
+            _fire_range_laser(ang)
+            if pat == "laser_double":
+                _fire_range_laser(ang + 0.09)
+                _fire_range_laser(ang - 0.09)
+
         if crit:
             self.total_crits += 1
 
@@ -903,6 +949,9 @@ class ShootingRangeScreen:
             self._shoot()
         for b in self.bullets:
             b.update(dt, [])
+            # LaserBeam is a pure visual — skip collision/bounds checks
+            if b.__class__.__name__ == "LaserBeam":
+                continue
             for t in self.targets:
                 if id(t) in b.hit_set:
                     continue
@@ -923,7 +972,7 @@ class ShootingRangeScreen:
                         "y": t["y"]-40, "text": label, "life": 1.0, "crit": crit})
                     wpn_name = self._current_weapon().name if self._current_weapon() else "?"
                     self.last_msg = ("CRITICAL! " if crit else "") + f"Hit {dmg} with {wpn_name}"
-            if b.alive and not (0 < b.x < self.PLAY_W and 0 < b.y < self.PLAY_H):
+            if b.alive and b.__class__.__name__ != "LaserBeam" and not (0 < b.x < self.PLAY_W and 0 < b.y < self.PLAY_H):
                 b.alive = False
         self.bullets = [b for b in self.bullets if b.alive]
         for t in self.targets:
@@ -994,7 +1043,7 @@ class ShootingRangeScreen:
             hpc=(60,220,60) if t["hp"]>t["max_hp"]*0.5 else ((220,200,40) if t["hp"]>t["max_hp"]*0.25 else (220,60,60))
             if hp_w>0: pygame.draw.rect(surface,hpc,(bx2+1,by2+1,hp_w-2,5),border_radius=2)
         for b in self.bullets:
-            b.draw(surface)
+            b.draw(surface, 0, 0)
         for f in self.floats:
             alpha=int(255*max(0.0,f["life"]))
             col=(255,220,0) if f["crit"] else (255,255,255)
