@@ -445,7 +445,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
     skill_cds  = getattr(player, 'skill_cd', [0.0, 0.0, 0.0])
     SLOT_W, SLOT_H = 58, 58
     SLOT_GAP   = 10
-    KEY_LABELS = ["Q", "F", "R"]
+    KEY_LABELS = ["SPC", "F", "R"]
     total_w    = len(skills) * SLOT_W + (len(skills) - 1) * SLOT_GAP
     start_x    = SCREEN_W // 2 - total_w // 2
     slot_y     = hud_y + (HUD_H - SLOT_H) // 2
@@ -490,7 +490,8 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
             surface.blit(ov, (sx + 2, slot_y + SLOT_H - fill_h))
 
         # Key label (top-left corner badge)
-        key_s = _font(11).render(KEY_LABELS[idx], True, WHITE)
+        key_font_size = 9 if KEY_LABELS[idx] == "SPC" else 11
+        key_s = _font(key_font_size).render(KEY_LABELS[idx], True, WHITE)
         surface.blit(key_s, (sx + 4, slot_y + 3))
 
         # Skill icon emoji / symbol

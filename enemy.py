@@ -7,6 +7,7 @@ Fixes:
 """
 import math
 import random
+import os
 import pygame
 from constants import (
     ENEMY_DATA, WHITE, RED, GREEN, YELLOW, ORANGE, BLACK, GRAY,
@@ -14,6 +15,53 @@ from constants import (
     MAP_W, MAP_H, TILE,   # FIX: world bounds for bullet out-of-range check
 )
 from item import make_random_item
+
+# ── PNG sprite mapping ────────────────────────────────────────────────────────
+# Maps enemy_type key → PNG filename (place PNGs in same folder as enemy.py)
+ENEMY_PNG = {
+    "Slime":         "Green_Slime.png",
+    "Wolf":          "Wolf.png",
+    "Bat":           "Bat_Imp.png",
+    "FireImp":       "Bat_Imp.png",
+    "Golem":         "Clay_Golem.png",
+    "Harpy":         "Harpy.png",
+    "StormMage":     "StormMage.png",
+    "EliteHybrid":   "Elite_Hybrid.png",
+    "Wraith":        "Wraith.png",
+    "GunnerElite":   "unner_Elite.png",
+    # Bosses
+    "Demon King Baldr": "Demon_King_Baldr__Final_Boss_.png",
+}
+
+# Module-level image cache — load each PNG only once
+_IMG_CACHE: dict = {}
+
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_enemy_image(enemy_type: str, diameter: int) -> pygame.Surface | None:
+    """Return a scaled Surface for enemy_type, or None if PNG not found."""
+    fname = ENEMY_PNG.get(enemy_type)
+    if not fname:
+        return None
+    cache_key = (enemy_type, diameter)
+    if cache_key in _IMG_CACHE:
+        return _IMG_CACHE[cache_key]
+    full_path = os.path.join(_BASE_DIR, fname)
+    if not os.path.exists(full_path):
+        print(f"[enemy] PNG not found: {full_path}")
+        _IMG_CACHE[cache_key] = None
+        return None
+    try:
+        img = pygame.image.load(full_path).convert_alpha()
+        img = pygame.transform.smoothscale(img, (diameter, diameter))
+        _IMG_CACHE[cache_key] = img
+        return img
+    except Exception as e:
+        print(f"[enemy] Failed to load {full_path}: {e}")
+        _IMG_CACHE[cache_key] = None
+        return None
 
 
 class Enemy:
@@ -55,6 +103,27 @@ class Enemy:
         self.hurt_timer  = 0.0
         # Soul Knight style: freeze until player enters the room (door closes)
         self.activated   = False
+
+        # PNG sprite — display size larger than collision radius for visual clarity
+        # Small(<=18): x4.5 | Medium(<=24): x4 | Large(>24): x3.5
+        if self.size <= 18:
+            _diam = int(self.size * 4.5)
+        elif self.size <= 24:
+            _diam = int(self.size * 4)
+        else:
+            _diam = int(self.size * 3.5)
+        self._sprite_right = _load_enemy_image(enemy_type, _diam)
+        self._sprite_left  = (
+            pygame.transform.flip(self._sprite_right, True, False)
+            if self._sprite_right else None
+        )
+        self._sprite_hurt_r = None
+        self._sprite_hurt_l = None
+        self._display_r = _diam  # remember for HP bar offset
+
+        # Facing direction (updated each frame from x movement)
+        self._facing_left = False
+        self._prev_x      = float(x)
 
     def change_ai_state(self, new_state):
         self.ai_state = new_state
@@ -136,6 +205,10 @@ class Enemy:
             ty = self.y + (dy / d) * 80
             self._move_towards(tx, ty, walls, dt)
 
+        # Update facing direction — always look toward the player
+        self._facing_left = player.x > self.x
+        self._prev_x = self.x
+
     def _do_attack(self, player, bullets_out, dt, walls):
         self._move_towards(player.x, player.y, walls, dt)
 
@@ -169,19 +242,51 @@ class Enemy:
         sy = int(self.y - cam_y)
         r  = self.size
 
-        # FIX: use HUD_H constant instead of magic 80
         play_h = SCREEN_H - HUD_H
         if sx < -r or sx > SCREEN_W + r or sy < -r or sy > play_h + r:
             return
 
-        col = (255, 80, 80) if self.hurt_timer > 0 else self.color
-        pygame.draw.circle(surface, col, (sx, sy), r)
-        pygame.draw.circle(surface, BLACK, (sx, sy), r, 2)
-        pygame.draw.circle(surface, WHITE, (sx - r // 3, sy - r // 4), max(3, r // 5))
+        if self._sprite_right:
+            # Pick correct facing sprite
+            base = self._sprite_left if self._facing_left else self._sprite_right
 
-        bar_w = r * 2
-        bx    = sx - r
-        by    = sy - r - 8
+            if self.hurt_timer > 0:
+                # Build tinted version for this direction on first hurt
+                if self._facing_left:
+                    if self._sprite_hurt_l is None:
+                        t = base.copy()
+                        t.fill((255, 80, 80, 120), special_flags=pygame.BLEND_RGBA_ADD)
+                        self._sprite_hurt_l = t
+                    img = self._sprite_hurt_l
+                else:
+                    if self._sprite_hurt_r is None:
+                        t = base.copy()
+                        t.fill((255, 80, 80, 120), special_flags=pygame.BLEND_RGBA_ADD)
+                        self._sprite_hurt_r = t
+                    img = self._sprite_hurt_r
+            else:
+                # Reset cached tints so they rebuild on next hurt
+                self._sprite_hurt_r = None
+                self._sprite_hurt_l = None
+                img = base
+
+            draw_rect = img.get_rect(center=(sx, sy))
+            surface.blit(img, draw_rect)
+
+            # HP bar — width matches sprite width, sits just above it
+            bar_w = img.get_width()
+            bx    = sx - bar_w // 2
+            by    = draw_rect.top - 6
+        else:
+            # Fallback circle drawing
+            col = (255, 80, 80) if self.hurt_timer > 0 else self.color
+            pygame.draw.circle(surface, col, (sx, sy), r)
+            pygame.draw.circle(surface, BLACK, (sx, sy), r, 2)
+            pygame.draw.circle(surface, WHITE, (sx - r // 3, sy - r // 4), max(3, r // 5))
+            bar_w = r * 2
+            bx    = sx - r
+            by    = sy - r - 8
+
         pygame.draw.rect(surface, (80, 0, 0), (bx, by, bar_w, 5))
         fill = int(bar_w * self.hp / max(1, self.max_hp))
         pygame.draw.rect(surface, RED, (bx, by, fill, 5))
@@ -235,6 +340,15 @@ class BossEnemy(RangedEnemy):
         self.shoot_cd    = 1.2
         self.phase       = 1
         self.burst_count = 3
+        # Boss gets a much bigger sprite (x6 of collision size)
+        boss_diam = int(self.size * 6)
+        self._sprite_right = _load_enemy_image(enemy_type, boss_diam)
+        self._sprite_left  = (
+            pygame.transform.flip(self._sprite_right, True, False)
+            if self._sprite_right else None
+        )
+        self._sprite_hurt_r = None
+        self._sprite_hurt_l = None
 
     def update(self, player, walls, dt, bullets_out):
         if self.hp < self.max_hp * 0.5 and self.phase == 1:

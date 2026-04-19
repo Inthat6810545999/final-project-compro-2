@@ -798,6 +798,9 @@ class ShootingRangeScreen:
         self._wpn_btns = []
         self._scroll   = 0.0
         self._scroll_max = 0
+        # Screen shake
+        self._shake_timer = 0.0
+        self._shake_mag   = 0
         # DPS tracking
         self._dps_log     = []    # list of [elapsed_time, damage]
         self._elapsed     = 0.0   # total time since reset
@@ -917,8 +920,22 @@ class ShootingRangeScreen:
                 _fire_range_laser(ang + 0.09)
                 _fire_range_laser(ang - 0.09)
 
+        # ── Per-weapon screen shake ────────────────────────────
+        if wpn and hasattr(wpn, 'effect') and wpn.effect:
+            sh_mag, sh_dur = wpn.effect.get("shake", (3, 0.10))
+            if sh_mag > 0:
+                self._shake_timer = max(self._shake_timer, sh_dur)
+                self._shake_mag   = max(self._shake_mag,   sh_mag)
+
         if crit:
             self.total_crits += 1
+
+        # ── Per-weapon screen shake ────────────────────────────
+        wpn2 = self._current_weapon()
+        if wpn2:
+            shake_mag, shake_dur = (wpn2.effect or {}).get("shake", (3, 0.10))
+            self._shake_timer = max(self._shake_timer, shake_dur)
+            self._shake_mag   = max(self._shake_mag,   shake_mag)
 
     def _select_weapon(self, idx):
         self.wpn_idx = idx % len(self._weapon_list)
@@ -938,6 +955,8 @@ class ShootingRangeScreen:
         p.mana = min(p.max_mana, p.mana + 18 * dt)
         if p.shoot_cooldown > 0:
             p.shoot_cooldown -= dt
+        if self._shake_timer > 0:
+            self._shake_timer = max(0.0, self._shake_timer - dt)
         if self.burst_left > 0:
             self.burst_timer -= dt
             if self.burst_timer <= 0:
@@ -981,6 +1000,8 @@ class ShootingRangeScreen:
         self.floats = [f for f in self.floats if f["life"] > 0]
         for f in self.floats:
             f["y"] -= 50*dt; f["life"] -= dt*1.2
+        if self._shake_timer > 0:
+            self._shake_timer = max(0.0, self._shake_timer - dt)
         # Recalculate rolling DPS (last _dps_window seconds)
         cutoff = self._elapsed - self._dps_window
         self._dps_log = [e for e in self._dps_log if e[0] >= cutoff]
@@ -1012,38 +1033,55 @@ class ShootingRangeScreen:
     def draw(self, surface, mouse_pos):
         p = self.player
         pw = self.PLAY_W
-        surface.fill((10,10,24))
+
+        # ── Compute shake offset ──────────────────────────────
+        sk_ox = sk_oy = 0
+        if self._shake_timer > 0:
+            m = int(self._shake_mag * (self._shake_timer / max(0.001, self._shake_mag * 0.025 + 0.08)))
+            m = max(1, min(m, self._shake_mag))
+            sk_ox = self._rnd.randint(-m, m)
+            sk_oy = self._rnd.randint(-m, m)
+
+        # ── Draw play area onto a temp surface (for shake blit) ──
+        play_surf = pygame.Surface((pw, self.PLAY_H))
+        play_surf.fill((10, 10, 24))
         for gx in range(0, pw, 60):
-            pygame.draw.line(surface,(18,18,38),(gx,0),(gx,self.PLAY_H))
+            pygame.draw.line(play_surf, (18, 18, 38), (gx, 0), (gx, self.PLAY_H))
         for gy in range(0, self.PLAY_H, 60):
-            pygame.draw.line(surface,(18,18,38),(0,gy),(pw,gy))
-        pygame.draw.line(surface,(40,40,80),(pw,0),(pw,self.PLAY_H),2)
+            pygame.draw.line(play_surf, (18, 18, 38), (0, gy), (pw, gy))
+        pygame.draw.line(play_surf, (40,40,80), (pw-1,0), (pw-1,self.PLAY_H), 2)
+
+        # ── Targets → play_surf ───────────────────────────────
         for t in self.targets:
             fl = t["hit_flash"] > 0
             tx, ty, r = int(t["x"]), int(t["y"]), t["r"]
             body_col  = (255,80,80)   if fl else (200,50,50)
             shade_col = (255,140,140) if fl else (240,100,100)
-            pygame.draw.ellipse(surface,(10,10,20),(tx-r,ty+r-4,r*2,int(r*0.5)))
-            pygame.draw.circle(surface, body_col,  (tx,ty), r)
-            pygame.draw.circle(surface, shade_col, (tx,ty), r, 2)
+            pygame.draw.ellipse(play_surf,(10,10,20),(tx-r,ty+r-4,r*2,int(r*0.5)))
+            pygame.draw.circle(play_surf, body_col,  (tx,ty), r)
+            pygame.draw.circle(play_surf, shade_col, (tx,ty), r, 2)
             for off in (-int(r*0.28), 0, int(r*0.28)):
-                pygame.draw.line(surface,(160,30,30),(tx-r+3,ty+off),(tx+r-3,ty+off),1)
+                pygame.draw.line(play_surf,(160,30,30),(tx-r+3,ty+off),(tx+r-3,ty+off),1)
             eo=int(r*0.28); er=max(2,int(r*0.18))
-            pygame.draw.circle(surface,(240,240,255),(tx-eo,ty-eo),er)
-            pygame.draw.circle(surface,(240,240,255),(tx+eo,ty-eo),er)
-            pygame.draw.circle(surface,(20,20,40),(tx-eo,ty-eo),max(1,er-1))
-            pygame.draw.circle(surface,(20,20,40),(tx+eo,ty-eo),max(1,er-1))
+            pygame.draw.circle(play_surf,(240,240,255),(tx-eo,ty-eo),er)
+            pygame.draw.circle(play_surf,(240,240,255),(tx+eo,ty-eo),er)
+            pygame.draw.circle(play_surf,(20,20,40),(tx-eo,ty-eo),max(1,er-1))
+            pygame.draw.circle(play_surf,(20,20,40),(tx+eo,ty-eo),max(1,er-1))
             if fl:
                 ov=pygame.Surface((r*2,r*2),pygame.SRCALPHA)
                 pygame.draw.circle(ov,(255,255,255,120),(r,r),r)
-                surface.blit(ov,(tx-r,ty-r))
+                play_surf.blit(ov,(tx-r,ty-r))
             bw2=r*2; bx2=tx-r; by2=ty+r+5
-            pygame.draw.rect(surface,(30,30,30),(bx2,by2,bw2,7),border_radius=3)
+            pygame.draw.rect(play_surf,(30,30,30),(bx2,by2,bw2,7),border_radius=3)
             hp_w=int(bw2*t["hp"]/max(1,t["max_hp"]))
             hpc=(60,220,60) if t["hp"]>t["max_hp"]*0.5 else ((220,200,40) if t["hp"]>t["max_hp"]*0.25 else (220,60,60))
-            if hp_w>0: pygame.draw.rect(surface,hpc,(bx2+1,by2+1,hp_w-2,5),border_radius=2)
+            if hp_w>0: pygame.draw.rect(play_surf,hpc,(bx2+1,by2+1,hp_w-2,5),border_radius=2)
+
+        # ── Bullets → play_surf ───────────────────────────────
         for b in self.bullets:
-            b.draw(surface, 0, 0)
+            b.draw(play_surf, 0, 0)
+
+        # ── Floating damage text → play_surf ─────────────────
         for f in self.floats:
             alpha=int(255*max(0.0,f["life"]))
             col=(255,220,0) if f["crit"] else (255,255,255)
@@ -1051,7 +1089,9 @@ class ShootingRangeScreen:
             fsurf=F(sz,bold=f["crit"]).render(f["text"],True,col)
             ts=pygame.Surface(fsurf.get_size(),pygame.SRCALPHA)
             ts.blit(fsurf,(0,0)); ts.set_alpha(alpha)
-            surface.blit(ts,(int(f["x"])-fsurf.get_width()//2,int(f["y"])))
+            play_surf.blit(ts,(int(f["x"])-fsurf.get_width()//2,int(f["y"])))
+
+        # ── Player + gun → play_surf ──────────────────────────
         ang=math.atan2(self.mouse[1]-self.py,self.mouse[0]-self.px)
         sx,sy=self.px,self.py
         facing_right=(self.mouse[0]>=self.px)
@@ -1062,17 +1102,21 @@ class ShootingRangeScreen:
         if _sprite is not None:
             sprite=_sprite if facing_right else _sprite_flip
             w2,h2=sprite.get_size()
-            surface.blit(sprite,(sx-w2//2,sy-h2//2))
+            play_surf.blit(sprite,(sx-w2//2,sy-h2//2))
         else:
-            pygame.draw.circle(surface,(224,56,120),(sx,sy),22)
+            pygame.draw.circle(play_surf,(224,56,120),(sx,sy),22)
         wpn=self._current_weapon()
         R=28
         if wpn and p:
-            # Sync player facing so _draw_gun() uses the correct angle/direction
             p.facing_angle = ang
             p.facing_right = facing_right
-            # _draw_gun has both PNG-sprite path AND polygon fallback for every gun shape
-            p._draw_gun(surface, sx, sy, R)
+            p._draw_gun(play_surf, sx, sy, R)
+
+        # ── Blit play_surf with shake offset ─────────────────
+        surface.fill((10, 10, 24), (0, 0, pw, self.PLAY_H))
+        surface.blit(play_surf, (sk_ox, sk_oy))
+
+        # ── Static UI overlays (no shake) ────────────────────
         pygame.draw.rect(surface,(12,12,28),(0,0,pw,52))
         if wpn:
             wc=self.RARITY_COLOR.get(wpn.rarity,WHITE)
@@ -1083,24 +1127,19 @@ class ShootingRangeScreen:
         mana_val=p.mana if p else 0; mana_max=p.max_mana if p else 100
         text(surface,f"MANA {int(mana_val)}/{int(mana_max)}",bx3,10,12,CYAN)
         _bar(surface,bx3,26,200,12,mana_val,mana_max,CYAN)
-        # ── Bottom stats bar ──────────────────────────────────────────────
         bar_y = self.PLAY_H - 44
         pygame.draw.rect(surface,(10,10,22),(0,bar_y,pw,44))
         pygame.draw.line(surface,(40,40,80),(0,bar_y),(pw,bar_y),1)
-        # DPS (rolling 3s) — colour: green→yellow→red by magnitude
         dps = self._current_dps
         if dps >= 200:   dps_col = (255, 80,  80)
         elif dps >= 80:  dps_col = (255, 200, 40)
         else:            dps_col = (80,  220, 80)
         text(surface, f"DPS  {dps:>6.1f}", 14, bar_y+6, 15, dps_col, bold=True)
         text(surface, f"PEAK {self._peak_dps:>6.1f}", 14, bar_y+24, 12, (180,180,220))
-        # Centre: total stats
         text(surface,f"TOTAL DMG: {self.total_dmg}   HITS: {self.total_hits}   CRITS: {self.total_crits}",
              pw//2, bar_y+14, 13, LIGHT_GRAY, center=True)
-        # Right: last hit message
         if self.last_msg:
-            text(surface, self.last_msg, pw-12, bar_y+14, 13, GOLD,
-                 **{"center": False} if True else {})
+            text(surface, self.last_msg, pw-12, bar_y+14, 13, GOLD)
         poff=pw+4
         pygame.draw.rect(surface,(8,8,20),(pw,0,self.PANEL_W,self.PLAY_H))
         text(surface,"Q / E  to cycle",poff+self.PANEL_W//2,8,11,GRAY,center=True)

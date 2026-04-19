@@ -129,7 +129,7 @@ class GameManager:
             if self.state == STATE_PLAYING:
                 self._try_pickup()
 
-        elif key == pygame.K_q:
+        elif key == pygame.K_SPACE:
             if self.state == STATE_PLAYING:
                 self._use_skill(0)
 
