@@ -12,6 +12,7 @@ Controls:
     E                  - Pick up item
     I                  - Open inventory
     ESC                - Pause / Back
+    M                  - Toggle sound on/off
 """
 
 import pygame
@@ -19,8 +20,14 @@ from game_manager import GameManager
 
 
 def main():
+    # ── ต้อง pre_init mixer ก่อน pygame.init() ──────────────
+    # frequency=44100 ต้องตรงกับ SAMPLE_RATE ใน sound_manager.py
+    pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
     pygame.init()
-    pygame.mixer.init()
+    # ยืนยัน mixer init สำเร็จ (ถ้าไม่มีการ์ดเสียงก็จะ skip เงียบๆ)
+    if not pygame.mixer.get_init():
+        print("[Audio] ไม่พบอุปกรณ์เสียง – เกมจะทำงานโดยไม่มีเสียง")
+
     screen = pygame.display.set_mode((1280, 720))
     pygame.display.set_caption("Sausage Man: Legends of Midgard")
     pygame.display.set_icon(pygame.Surface((32, 32)))

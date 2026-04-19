@@ -1,5 +1,8 @@
 """
-bullet.py  –  Player bullet projectile + HUD updated to HP/Armor/Mana bars
+bullet.py  –  Player bullet projectile + HUD + VFX OVERHAUL
+  - Bullet trail (ghost fading history)
+  - FloatingText: shadow, auto-size scaling, crit glow
+  - draw_hud: weapon info panel, bar shine, slot glass highlights
 """
 import math
 import pygame
@@ -7,14 +10,14 @@ from constants import (
     YELLOW, CYAN, WHITE, RED, GREEN, GOLD,
     SCREEN_W, SCREEN_H, HUD_H, DARK_GRAY, BLACK,
     RARITY_COLORS, GRAY, ORANGE, PURPLE, LIGHT_BLUE,
-    BLUE,          # FIX: was missing, needed for Mana bar in draw_hud
-    TILE, MAP_W, MAP_H,  # FIX: used for correct bullet out-of-bounds check
+    BLUE,
+    TILE, MAP_W, MAP_H,
 )
 
+_TRAIL_LEN = 8   # history positions per bullet
 
-# ─────────────────────────────────────────────────────────────
 class Bullet:
-    """Player-fired projectile."""
+    """Player-fired projectile with glowing trail."""
 
     def __init__(self, x, y, dx, dy, speed, damage, pierce=False, is_crit=False,
                  color=None, size=6):
@@ -30,8 +33,13 @@ class Bullet:
         self.radius  = size
         self.color   = color or (255, 230, 80)
         self.hit_set = set()
+        self._trail  = []   # list of (x, y)
 
     def update(self, dt, walls):
+        # Record position for trail before moving
+        self._trail.append((self.x, self.y))
+        if len(self._trail) > _TRAIL_LEN:
+            self._trail.pop(0)
         self.x += self.dx * self.speed * 60 * dt
         self.y += self.dy * self.speed * 60 * dt
         for wall in walls:
@@ -44,16 +52,34 @@ class Bullet:
             self.alive = False
 
     def draw(self, surface, cam_x=0, cam_y=0):
-        sx  = int(self.x - cam_x)
-        sy  = int(self.y - cam_y)
+        sx = int(self.x - cam_x)
+        sy = int(self.y - cam_y)
         col = tuple(min(255, c + 80) for c in self.color) if self.is_crit else self.color
-        glow = pygame.Surface((self.radius*4, self.radius*4), pygame.SRCALPHA)
-        pygame.draw.circle(glow, (*col, 60), (self.radius*2, self.radius*2), self.radius*2)
-        surface.blit(glow, (sx - self.radius*2, sy - self.radius*2))
+
+        # Draw fading trail
+        n = len(self._trail)
+        for i, (tx, ty) in enumerate(self._trail):
+            frac = (i + 1) / (n + 1)          # 0 → 1 (oldest→newest)
+            tr_r = max(1, int(self.radius * frac * 0.8))
+            tr_a = int(180 * frac ** 2)
+            tr_surf = pygame.Surface((tr_r*2+2, tr_r*2+2), pygame.SRCALPHA)
+            pygame.draw.circle(tr_surf, (*col, tr_a), (tr_r+1, tr_r+1), tr_r)
+            surface.blit(tr_surf, (int(tx - cam_x) - tr_r - 1, int(ty - cam_y) - tr_r - 1))
+
+        # Outer glow (larger for crits)
+        glow_r = self.radius * (5 if self.is_crit else 3)
+        glow = pygame.Surface((glow_r*2, glow_r*2), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (*col, 55), (glow_r, glow_r), glow_r)
+        surface.blit(glow, (sx - glow_r, sy - glow_r))
+
+        # Bullet body
         pygame.draw.circle(surface, col, (sx, sy), self.radius)
         core_col = tuple(min(255, c + 100) for c in col)
         pygame.draw.circle(surface, core_col, (sx, sy), max(1, self.radius - 3))
 
+        # Crit: bright ring
+        if self.is_crit:
+            pygame.draw.circle(surface, WHITE, (sx, sy), self.radius + 2, 1)
 
 # ─────────────────────────────────────────────────────────────
 class LaserBeam:
@@ -210,13 +236,28 @@ class FloatingText:
         alpha = int(255 * self.life)
         sx    = int(self.x - cam_x)
         sy    = int(self.y - cam_y)
-        font  = _font(self.size)
+        # Auto-scale for large numbers
+        size = self.size
+        if len(self.text) >= 3 and self.text.isdigit():
+            val = int(self.text)
+            if val >= 100:
+                size = min(self.size + 10, self.size + 34)
+        font  = _font(size)
+        # Shadow layer
+        shadow_surf = font.render(self.text, True, (0, 0, 0))
+        ts_shadow = pygame.Surface(shadow_surf.get_size(), pygame.SRCALPHA)
+        ts_shadow.fill((0, 0, 0, 0))
+        ts_shadow.blit(shadow_surf, (0, 0))
+        ts_shadow.set_alpha(int(alpha * 0.6))
+        cx = sx - shadow_surf.get_width() // 2
+        surface.blit(ts_shadow, (cx + 2, sy + 2))
+        # Main text
         surf  = font.render(self.text, True, self.color)
         ts    = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
         ts.fill((0, 0, 0, 0))
         ts.blit(surf, (0, 0))
         ts.set_alpha(alpha)
-        surface.blit(ts, (sx - surf.get_width() // 2, sy))
+        surface.blit(ts, (cx, sy))
 
 
 # ─────────────────────────────────────────────────────────────
@@ -378,6 +419,11 @@ def _draw_sk_bar(surface, x, y, w, h, value, maximum, fill_col, back=(10, 10, 20
         bright = tuple(min(255, c + 60) for c in fill_col)
         pygame.draw.rect(surface, bright,
                          (x + 2, y + 2, fill_w, (h-4)//3), border_radius=(h-4)//2)
+        # Right-edge glow dot
+        gx = x + 2 + fill_w - 2
+        ge = pygame.Surface((8, h-4), pygame.SRCALPHA)
+        pygame.draw.rect(ge, (*bright, 180), (0, 0, 8, h-4), border_radius=(h-4)//2)
+        surface.blit(ge, (gx, y+2))
 
 def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0.0):
     from constants import CLASS_SKILLS
@@ -397,7 +443,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
         bar_w = int((SCREEN_W - 40) * (ft / 3.0))
         pygame.draw.rect(surface, (80, 30, 0),  (20, 4, SCREEN_W - 40, 8), border_radius=4)
         pygame.draw.rect(surface, (255, 140, 0), (20, 4, bar_w, 8), border_radius=4)
-        label = _font(11).render("⚡ FRENZY", True, (255, 200, 80))
+        label = _font(11).render("FRENZY", True, (255, 200, 80))
         surface.blit(label, (SCREEN_W // 2 - label.get_width() // 2, 14))
 
     # ── TOP-LEFT: HP / Armor / Mana bars ─────────────────────
@@ -437,6 +483,28 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
     hud_rect = pygame.Rect(0, hud_y, SCREEN_W, HUD_H)
     pygame.draw.rect(surface, (12, 12, 22), hud_rect)
     pygame.draw.line(surface, (60, 60, 110), (0, hud_y), (SCREEN_W, hud_y), 2)
+    # ── LEFT HUD: weapon info panel ────────────────────────
+    wpn = getattr(player, 'weapon', None)
+    if wpn:
+        rcol = RARITY_COLORS.get(wpn.rarity, WHITE)
+        wname = wpn.name
+        wrarity = f"[{wpn.rarity}]"
+        wstats  = f"DMG {getattr(wpn,'damage',0)}  MP {getattr(wpn,'mana_cost',0)}"
+        wfont   = _font(13); rfont = _font(11); sfont = _font(10)
+        wns = wfont.render(wname,    True, rcol)
+        wrs = rfont.render(wrarity,  True, rcol)
+        wss = sfont.render(wstats,   True, (160, 200, 230))
+        panel_w = max(wns.get_width(), wrs.get_width(), wss.get_width()) + 16
+        panel_h = HUD_H - 8
+        px2 = 8; py2 = hud_y + 4
+        pg2 = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pg2.fill((0, 0, 0, 110))
+        pygame.draw.rect(pg2, (*rcol, 130), (0,0,panel_w,panel_h), 2, border_radius=6)
+        surface.blit(pg2, (px2, py2))
+        surface.blit(wns, (px2 + 8, py2 + 4))
+        surface.blit(wrs, (px2 + 8, py2 + 4 + wns.get_height() + 1))
+        surface.blit(wss, (px2 + 8, py2 + 4 + wns.get_height() + wrs.get_height() + 3))
+
 
     inf_font = _font(14)
 
@@ -481,6 +549,10 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
 
         pygame.draw.rect(surface, bg_col,  (sx, slot_y, SLOT_W, SLOT_H), border_radius=10)
         pygame.draw.rect(surface, brd_col, (sx, slot_y, SLOT_W, SLOT_H), 2, border_radius=10)
+        # Glass highlight
+        gl = pygame.Surface((SLOT_W-6, SLOT_H//3), pygame.SRCALPHA)
+        gl.fill((255,255,255,18))
+        surface.blit(gl, (sx+3, slot_y+3))
 
         # Cooldown overlay (fills from bottom)
         if not ready:
@@ -495,7 +567,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
         surface.blit(key_s, (sx + 4, slot_y + 3))
 
         # Skill icon emoji / symbol
-        icon_map = {"dash": "💨", "star_spread": "★", "rapid_fire": "⚡"}
+        icon_map = {"dash": "D", "star_spread": "S", "rapid_fire": "F"}
         icon_txt = icon_map.get(sk["type"], "?")
         icon_s   = _font(20).render(icon_txt, True, col if ready else (120, 120, 140))
         surface.blit(icon_s, (sx + SLOT_W//2 - icon_s.get_width()//2, slot_y + 10))

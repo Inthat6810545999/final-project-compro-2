@@ -37,7 +37,7 @@ ENEMY_PNG = {
 _IMG_CACHE: dict = {}
 
 
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprite", "entity_sprite")
 
 
 def _load_enemy_image(enemy_type: str, diameter: int) -> pygame.Surface | None:
@@ -243,53 +243,80 @@ class Enemy:
         r  = self.size
 
         play_h = SCREEN_H - HUD_H
-        if sx < -r or sx > SCREEN_W + r or sy < -r or sy > play_h + r:
+        if sx < -r*4 or sx > SCREEN_W + r*4 or sy < -r*4 or sy > play_h + r*4:
             return
 
+        # Drop shadow under enemy
+        shadow_s = pygame.Surface((r*4, r*2), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_s, (0,0,0,70), (0,0,r*4,r*2))
+        surface.blit(shadow_s, (sx-r*2, sy+r//2))
+
         if self._sprite_right:
-            # Pick correct facing sprite
             base = self._sprite_left if self._facing_left else self._sprite_right
+            self._sprite_hurt_r = None
+            self._sprite_hurt_l = None
 
             if self.hurt_timer > 0:
-                # Build tinted version for this direction on first hurt
-                if self._facing_left:
-                    if self._sprite_hurt_l is None:
-                        t = base.copy()
-                        t.fill((255, 80, 80, 120), special_flags=pygame.BLEND_RGBA_ADD)
-                        self._sprite_hurt_l = t
-                    img = self._sprite_hurt_l
-                else:
-                    if self._sprite_hurt_r is None:
-                        t = base.copy()
-                        t.fill((255, 80, 80, 120), special_flags=pygame.BLEND_RGBA_ADD)
-                        self._sprite_hurt_r = t
-                    img = self._sprite_hurt_r
+                # Circular white flash blended onto sprite copy — follows sprite shape
+                img = base.copy()
+                iw, ih = img.get_size()
+                flash_s = pygame.Surface((iw, ih), pygame.SRCALPHA)
+                flash_r = min(iw, ih) // 2
+                pygame.draw.circle(flash_s, (255, 255, 255, 210),
+                                   (iw // 2, ih // 2), flash_r)
+                img.blit(flash_s, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
             else:
-                # Reset cached tints so they rebuild on next hurt
-                self._sprite_hurt_r = None
-                self._sprite_hurt_l = None
                 img = base
 
             draw_rect = img.get_rect(center=(sx, sy))
             surface.blit(img, draw_rect)
-
-            # HP bar — width matches sprite width, sits just above it
             bar_w = img.get_width()
             bx    = sx - bar_w // 2
-            by    = draw_rect.top - 6
+            by    = draw_rect.top - 8
         else:
-            # Fallback circle drawing
-            col = (255, 80, 80) if self.hurt_timer > 0 else self.color
+            # Fallback: glow circle
+            if self.hurt_timer > 0:
+                # White flash ring
+                fw = pygame.Surface((r*4+4, r*4+4), pygame.SRCALPHA)
+                pygame.draw.circle(fw, (255,255,255,160), (r*2+2,r*2+2), r+2)
+                surface.blit(fw, (sx-r*2-2, sy-r*2-2))
+                col = (255, 180, 180)
+            else:
+                # Subtle glow matching enemy color
+                gw = pygame.Surface((r*4+4, r*4+4), pygame.SRCALPHA)
+                pygame.draw.circle(gw, (*self.color, 50), (r*2+2,r*2+2), r*2)
+                surface.blit(gw, (sx-r*2-2, sy-r*2-2))
+                col = self.color
             pygame.draw.circle(surface, col, (sx, sy), r)
+            # Rim highlight
+            hi = tuple(min(255, c+70) for c in col)
+            pygame.draw.circle(surface, hi, (sx-r//4, sy-r//4), max(2, r//4))
             pygame.draw.circle(surface, BLACK, (sx, sy), r, 2)
-            pygame.draw.circle(surface, WHITE, (sx - r // 3, sy - r // 4), max(3, r // 5))
             bar_w = r * 2
             bx    = sx - r
-            by    = sy - r - 8
+            by    = sy - r - 10
 
-        pygame.draw.rect(surface, (80, 0, 0), (bx, by, bar_w, 5))
-        fill = int(bar_w * self.hp / max(1, self.max_hp))
-        pygame.draw.rect(surface, RED, (bx, by, fill, 5))
+        # ── Enhanced HP bar ────────────────────────────────────
+        bar_h = 6
+        pct = self.hp / max(1, self.max_hp)
+        # Background
+        pygame.draw.rect(surface, (20,0,0), (bx-1, by-1, bar_w+2, bar_h+2), border_radius=3)
+        pygame.draw.rect(surface, (60,0,0), (bx, by, bar_w, bar_h), border_radius=3)
+        # Fill gradient (green → yellow → red)
+        fill_w = max(0, int(bar_w * pct))
+        if fill_w > 0:
+            if pct > 0.5:
+                bar_col = (min(255, int(255*(1-pct)*2)), 200, 40)
+            elif pct > 0.25:
+                bar_col = (255, min(255, int(200*pct*4)), 0)
+            else:
+                bar_col = (255, 30, 30)
+            pygame.draw.rect(surface, bar_col, (bx, by, fill_w, bar_h), border_radius=3)
+            # Shine
+            bright = tuple(min(255, c+60) for c in bar_col)
+            pygame.draw.rect(surface, bright, (bx, by, fill_w, bar_h//2), border_radius=3)
+        # Border
+        pygame.draw.rect(surface, (150,150,180), (bx-1,by-1,bar_w+2,bar_h+2), 1, border_radius=3)
 
 
 class MeleeEnemy(Enemy):
@@ -377,8 +404,26 @@ class BossEnemy(RangedEnemy):
         super().draw(surface, cam_x, cam_y)
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
+        t  = pygame.time.get_ticks() / 1000.0
         ring_col = ORANGE if self.phase == 2 else YELLOW
-        pygame.draw.circle(surface, ring_col, (sx, sy), self.size + 4, 3)
+        # Pulsing aura
+        pulse = int(math.sin(t * 5) * 4)
+        gw = pygame.Surface(((self.size+20)*2+4,(self.size+20)*2+4), pygame.SRCALPHA)
+        pygame.draw.circle(gw, (*ring_col,35), (self.size+22,self.size+22), self.size+18+pulse)
+        surface.blit(gw, (sx-self.size-22, sy-self.size-22))
+        # Double rings
+        pygame.draw.circle(surface, ring_col, (sx, sy), self.size + 6 + pulse, 3)
+        pygame.draw.circle(surface, WHITE, (sx, sy), self.size + 10 + pulse, 1)
+        # Phase 2: spinning arc decoration
+        if self.phase == 2:
+            arc_surf = pygame.Surface(((self.size+16)*2+4,(self.size+16)*2+4), pygame.SRCALPHA)
+            ar = self.size + 14
+            start_a = int(t * 200) % 360
+            pygame.draw.arc(arc_surf,(255,80,20,200),(2,2,ar*2,ar*2),
+                            math.radians(start_a),math.radians(start_a+120),3)
+            pygame.draw.arc(arc_surf,(255,80,20,200),(2,2,ar*2,ar*2),
+                            math.radians(start_a+180),math.radians(start_a+300),3)
+            surface.blit(arc_surf,(sx-ar-2,sy-ar-2))
 
 
 class EliteShooterEnemy(RangedEnemy):
@@ -554,10 +599,17 @@ class EnemyBullet:
     def draw(self, surface, cam_x=0, cam_y=0):
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
-        # Outer glow ring for elite bullets (slightly larger)
-        if self.color != ORANGE:
-            pygame.draw.circle(surface, self.color, (sx, sy), self.radius + 2)
-        pygame.draw.circle(surface, self.color, (sx, sy), self.radius)
+        r  = self.radius
+        # Outer glow
+        gw = pygame.Surface((r*4+4,r*4+4), pygame.SRCALPHA)
+        pygame.draw.circle(gw, (*self.color,50), (r*2+2,r*2+2), r*2)
+        surface.blit(gw, (sx-r*2-2, sy-r*2-2))
+        # Mid ring
+        pygame.draw.circle(surface, self.color, (sx, sy), r+1)
+        # Body
+        pygame.draw.circle(surface, self.color, (sx, sy), r)
         # Inner bright core
-        inner = tuple(min(255, c + 80) for c in self.color)
-        pygame.draw.circle(surface, inner, (sx, sy), self.radius - 2)
+        inner = tuple(min(255, c+100) for c in self.color)
+        pygame.draw.circle(surface, inner, (sx, sy), max(1, r-2))
+        # White hot center dot
+        pygame.draw.circle(surface, (255,255,255), (sx,sy), max(1, r-4))

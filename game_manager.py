@@ -31,6 +31,7 @@ from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
                            ShopScreen, PauseScreen, GameOverScreen,
                            ShootingRangeScreen)
+from sound_manager import SoundManager
 
 
 class GameManager:
@@ -63,6 +64,9 @@ class GameManager:
         self._last_enemy_pos = (640, 360)    # position of last enemy killed
         self.shake_timer     = 0.0           # screen-shake duration remaining
         self.shake_mag       = 0             # shake magnitude in pixels
+
+        # ── Sound ─────────────────────────────────────────────
+        self.sfx = SoundManager()
 
         self.menu_screen  = MainMenuScreen(self.tracker)
         self.range_screen = ShootingRangeScreen()
@@ -144,6 +148,13 @@ class GameManager:
         elif key == pygame.K_F11:
             self._toggle_fullscreen()
 
+        elif key == pygame.K_m:
+            on = self.sfx.toggle()
+            # brief visual notice (only when playing)
+            if self.state == STATE_PLAYING and self.player:
+                msg = "🔊 Sound ON" if on else "🔇 Sound OFF"
+                self._add_fx(SCREEN_W // 2, 80, msg, (220, 220, 80), 20)
+
     def _toggle_fullscreen(self):
         self._fullscreen = not self._fullscreen
         if self._fullscreen:
@@ -168,6 +179,7 @@ class GameManager:
             return
         stype = skill_cfg["type"]
         self._handle_skill_new(stype, skill_cfg)
+        self.sfx.play_skill(stype)
         p.skill_cd[idx] = skill_cfg["cooldown"]
 
     def _tick_skill_cd(self, dt):
@@ -375,14 +387,18 @@ class GameManager:
         if self.state == STATE_MENU:
             result = self.menu_screen.handle_click(pos)
             if result == "play":
+                self.sfx.play("menu_click")
                 self._start_new_game("Sausage Man")
             elif result == "range":
+                self.sfx.play("menu_click")
                 self.range_screen._reset()
                 self.range_screen.set_player(self.player if self.player else __import__("player").Player("Hero", "Sausage Man"))
                 self.change_state(STATE_RANGE)
             elif result == "stats":
+                self.sfx.play("menu_click")
                 self.tracker.plot_dashboard()
             elif result == "quit":
+                self.sfx.play("menu_click")
                 self.running = False
 
         elif self.state == STATE_CLASS_SEL:
@@ -407,14 +423,18 @@ class GameManager:
         elif self.state == STATE_SHOP:
             result = self.shop_screen.handle_click(pos, self.player)
             if result == "heal":
+                self.sfx.play("heal")
                 self._add_fx(SCREEN_W // 2, SCREEN_H // 2 - 40, "+50 HP", GREEN, 22)
             elif result == "buy":
+                self.sfx.play("shop_buy")
                 self._add_fx(SCREEN_W // 2, SCREEN_H // 2 - 40, "Item Purchased!", GOLD, 22)
             elif result == "reroll":
+                self.sfx.play("menu_click")
                 cost = self.shop_screen.reroll_cost
                 self._add_fx(SCREEN_W // 2, SCREEN_H // 2 - 40,
                              f"Shop Rerolled! Next: {cost}G", CYAN, 20)
             elif result == "leave":
+                self.sfx.play("menu_click")
                 self._next_stage()   # FIX: method now defined below
 
         elif self.state == STATE_RANGE:
@@ -426,8 +446,11 @@ class GameManager:
                 self.change_state(STATE_MENU)
 
         elif self.state in (STATE_GAME_OVER, STATE_VICTORY):
-            if hasattr(self.over_screen, "btn_menu") and self.over_screen.btn_menu.collidepoint(pos):
+            result = self.over_screen.handle_click(pos)
+            if result == "menu":
                 self.change_state(STATE_MENU)
+            elif result == "restart":
+                self._restart_game()
 
     # ── State management ─────────────────────────────────────
     def change_state(self, new_state):
@@ -497,6 +520,7 @@ class GameManager:
             if healed > 0:
                 self._add_fx(p.x, p.y - 40, f"+{healed} HP", (255, 80, 80), 22)
                 self._add_fx(p.x, p.y - 65, "HEALED!", (255, 160, 160), 16)
+                self.sfx.play("heal")
             return
 
         best_drop = None
@@ -529,6 +553,7 @@ class GameManager:
             self._add_fx(p.x, p.y - 30, f"[EQUIPPED] {itm.name}!", col, 17)
 
         self.tracker.log_event("item_pickup", {"rarity": itm.rarity})
+        self.sfx.play("item_pickup")
         best_drop.alive = False
         self.drops.remove(best_drop)
 
@@ -566,6 +591,7 @@ class GameManager:
         # Tick run timer
         self.run_time += dt
         self._tick_skill_cd(dt)
+        self.sfx.update(dt)
 
         world_mouse = (mouse_pos[0] + cam_x, mouse_pos[1] + cam_y)
 
@@ -649,6 +675,7 @@ class GameManager:
                         # Flash "No Mana!" once (not every frame)
                         if not getattr(p, '_no_mana_fx_cd', 0) > 0:
                             self._add_fx(p.x, p.y - 45, "No Mana!", (80, 120, 255), 16)
+                            self.sfx.play("no_mana")
                             p._no_mana_fx_cd = 0.6
                     else:
                         p.use_mana(mana_cost)
@@ -770,6 +797,9 @@ class GameManager:
 
                         p.shoot_cooldown = (1.0 / max(0.1, p.get_fire_rate())) / frenzy_mult
 
+                        # ── เสียงยิง ───────────────────────────────────────
+                        self.sfx.play_shoot(wpn)
+
                         # ── Per-weapon screen shake ────────────────────
                         shake_mag, shake_dur = fx.get("shake", (3, 0.10))
                         if frenzy_mult > 1.0:
@@ -829,6 +859,7 @@ class GameManager:
                     col   = GOLD if b.is_crit else WHITE
                     label = f"{'CRIT! ' if b.is_crit else ''}{actual}"
                     self._add_fx(e.x, e.y - e.size, label, col)
+                    self.sfx.play("hit_enemy")
                     self.tracker.log_event("damage", {
                         "amount": actual, "is_crit": b.is_crit,
                         "enemy_type": e.enemy_type
@@ -850,6 +881,7 @@ class GameManager:
                 if dmg == -1:
                     self._add_fx(p.x, p.y - 30, "DODGE!", CYAN, 20)
                 elif dmg >= 0:   # armor-absorbed (0) OR HP lost (>0) — both count as a hit
+                    self.sfx.play("hit_player")
                     # ── Screen shake on ANY hit (armor or HP) ─
                     self.shake_timer = 0.28
                     self.shake_mag   = 7
@@ -882,6 +914,12 @@ class GameManager:
                     "exp": e.exp_reward,
                     "is_boss": isinstance(e, __import__("enemy").BossEnemy)
                 })
+                # ── เสียงศัตรูตาย ──────────────────────────────────
+                from enemy import BossEnemy as _BE
+                if isinstance(e, _BE):
+                    self.sfx.play("boss_die")
+                else:
+                    self.sfx.play("enemy_die")
                 self.enemies.remove(e)
                 self.kills += 1
                 self.score += e.exp_reward * 10
@@ -927,6 +965,7 @@ class GameManager:
         # ── Player death ──────────────────────────────────────
         if not p.alive:
             # FIX: call end_run so stats are saved
+            self.sfx.play("player_die")
             self.tracker.end_run("death", p)
             self.change_state(STATE_GAME_OVER)
 
@@ -936,6 +975,7 @@ class GameManager:
                 px, py = self._last_enemy_pos
                 self.portal = Portal(px, py)
                 self._add_fx(px, py - 50, "PORTAL OPENED!", (200, 120, 255), 22)
+                self.sfx.play("portal_open")
 
     # ── Render ───────────────────────────────────────────────
     def _render(self, mouse_pos, dt=0.016):

@@ -60,7 +60,7 @@ def _load_gun_sprite(weapon_name: str, gun_shape: str):
         return _GUN_CACHE[weapon_name]
     filename = weapon_name.replace(" ", "_").replace("-", "-") + ".png"
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    path     = os.path.join(base_dir, filename)
+    path     = os.path.join(base_dir, "sprite", "gun_sprite", filename)
     print(f"[gun] Looking for: {path}")
     print(f"[gun] File exists: {os.path.exists(path)}")
     surf     = None
@@ -80,10 +80,10 @@ def _load_sprite():
     global _SPRITE, _SPRITE_FLIP
     if _SPRITE is not None:
         return
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Sausageguy.png")
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprite", "entity_sprite", "Sausageguy.png")
     try:
         img = pygame.image.load(path).convert_alpha()
-        _SPRITE      = pygame.transform.smoothscale(img, (72, 72))
+        _SPRITE      = pygame.transform.smoothscale(img, (94, 94))
         _SPRITE_FLIP = pygame.transform.flip(_SPRITE, True, False)
     except Exception as e:
         print(f"[player] Could not load Sausageguy.png: {e}")
@@ -268,18 +268,45 @@ class Player:
         sy = int(self.y - cam_y)
         r  = self.RADIUS
 
+        # Drop shadow — at character feet (character sits in lower ~80% of PNG)
+        # With 94px sprite: feet ≈ sy + 34, body width ≈ 52px
+        feet_y  = sy + 34
+        shadow_s = pygame.Surface((60, 14), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_s, (0, 0, 0, 90), (0, 0, 60, 14))
+        surface.blit(shadow_s, (sx - 30, feet_y - 4))
+
         if _SPRITE is not None:
             sprite = _SPRITE if self.facing_right else _SPRITE_FLIP
-            if self.iframe_timer > 0:
-                flash = sprite.copy()
-                flash.fill((255, 80, 80, 160), special_flags=pygame.BLEND_RGBA_MULT)
-                sprite = flash
             w, h = sprite.get_size()
-            surface.blit(sprite, (sx - w // 2, sy - h // 2))
+
+            if self.iframe_timer > 0:
+                # Circular flash blended ONTO the sprite copy so it respects sprite shape
+                t = pygame.time.get_ticks()
+                flash_copy = sprite.copy()
+                flash_s = pygame.Surface((w, h), pygame.SRCALPHA)
+                # Circle centered on the character body (slightly below sprite center)
+                char_cx, char_cy = w // 2, int(h * 0.52)
+                char_r = int(w * 0.44)
+                if (t // 60) % 2 == 0:
+                    pygame.draw.circle(flash_s, (255, 255, 255, 160), (char_cx, char_cy), char_r)
+                else:
+                    pygame.draw.circle(flash_s, (255, 100, 100, 100), (char_cx, char_cy), char_r)
+                flash_copy.blit(flash_s, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+                surface.blit(flash_copy, (sx - w // 2, sy - h // 2))
+            else:
+                surface.blit(sprite, (sx - w // 2, sy - h // 2))
         else:
             col = (255, 80, 80) if self.iframe_timer > 0 else self.color
+            # Glow ring
+            gr = r + 6
+            gw = pygame.Surface((gr*2+4,gr*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(gw, (*col,50), (gr+2,gr+2), gr)
+            surface.blit(gw, (sx-gr-2, sy-gr-2))
             pygame.draw.circle(surface, col, (sx, sy), r)
             pygame.draw.circle(surface, WHITE, (sx, sy), r, 2)
+            # Highlight
+            hi = tuple(min(255,c+80) for c in col)
+            pygame.draw.circle(surface, hi, (sx-r//4, sy-r//4), r//4)
 
         # ── Draw gun model ────────────────────────────────────
         self._draw_gun(surface, sx, sy, r)
