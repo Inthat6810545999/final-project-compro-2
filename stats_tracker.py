@@ -121,7 +121,7 @@ class StatsTracker:
         """Called when run ends (death or victory)."""
         self.current_run["outcome"]      = outcome
         self.current_run["duration_sec"] = int(time.time() - self._start_time)
-        self.current_run["level_reached"]= player.level
+        self.current_run["level_reached"]= 1  # level removed
         self.current_run["gold_earned"]  = player.gold
         # Score bonus for victory
         if outcome == "victory":

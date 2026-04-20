@@ -576,7 +576,7 @@ class EnemyBullet:
         self.speed  = speed
         self.damage = damage
         self.alive  = True
-        self.radius = 6
+        self.radius = 10
         self.color  = color or ORANGE
 
     # FIX: use world map bounds (MAP_W*TILE, MAP_H*TILE) not screen pixels.

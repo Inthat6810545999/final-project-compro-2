@@ -6,7 +6,7 @@ import random
 import os
 import pygame
 from pygame.locals import K_w, K_a, K_s, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT
-from constants import CLASSES, EXP_BASE, SCREEN_W, SCREEN_H, HUD_H, WHITE, RED, GOLD, CYAN
+from constants import CLASSES, SCREEN_W, SCREEN_H, HUD_H, WHITE, RED, GOLD, CYAN
 from item import make_starting_weapon
 
 _rnd = random.Random()
@@ -136,7 +136,6 @@ class Player:
 
         self.total_damage_dealt = 0
         self.items_collected    = 0
-        self.level = 1
 
         self.color   = cfg["color"]
         self.passive = cfg.get("passive", "")
@@ -144,8 +143,6 @@ class Player:
         self._armor_regen_timer = 0.0
         # No passive mana regen — mana is recovered by killing enemies
 
-        # stat_points kept as 0 for UI compat
-        self.stat_points = 0
 
         _load_sprite()
 
@@ -435,12 +432,3 @@ class Player:
             self.mana -= amount
             return True
         return False
-
-    def gain_exp(self, amount):
-        return False
-
-    def allocate_stat(self, stat):
-        return False
-
-    def recalc_derived(self):
-        pass

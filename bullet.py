@@ -446,37 +446,101 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
         label = _font(11).render("FRENZY", True, (255, 200, 80))
         surface.blit(label, (SCREEN_W // 2 - label.get_width() // 2, 14))
 
-    # ── TOP-LEFT: HP / Armor / Mana bars ─────────────────────
-    ICON  = 18
-    BAR_W = 150
-    BAR_H = 16
-    PAD   = 6
+    # ── TOP-LEFT: HP / Armor / Mana bars  (Dark Fantasy style) ──
+    # Design tokens matching main-menu / pause stone panels
+    DF_GOLD     = (200, 165,  80)
+    DF_BLOOD_B  = (210,  55,  55)
+    DF_FROST    = ( 70, 185, 200)
+    DF_MANA     = ( 90, 130, 255)
+    BG_STONE    = ( 22,  18,  14)
+    BORDER_GOLD = (110,  85,  38)
+    BORDER_ST   = ( 48,  40,  30)
+    DF_BONE     = (210, 195, 165)
+    DF_PARCH    = (170, 150, 115)
+
+    BAR_W = 148
+    BAR_H = 14
+    PAD   = 8
     ROW_H = BAR_H + PAD
-    PX, PY = 8, 8
-    PW = ICON + 8 + BAR_W + 6
-    PH = ROW_H * 3 + PAD
+    ICON  = 16
+    PX, PY = 10, 10
+    PW = 14 + ICON + 10 + BAR_W + 14
+    PH = 12 + ROW_H * 3 + 6
 
-    panel_surf = pygame.Surface((PW, PH), pygame.SRCALPHA)
-    panel_surf.fill((0, 0, 0, 130))
-    pygame.draw.rect(panel_surf, (80, 80, 120, 180), (0, 0, PW, PH), 2, border_radius=10)
-    surface.blit(panel_surf, (PX, PY))
+    # ── Drop shadow ───────────────────────────────────────────
+    sh = pygame.Surface((PW + 8, PH + 8), pygame.SRCALPHA)
+    pygame.draw.rect(sh, (0, 0, 0, 70), (0, 0, PW + 8, PH + 8), border_radius=13)
+    surface.blit(sh, (PX - 2, PY - 2))
 
-    num_font = _font(12)
+    # ── Gold outer glow ───────────────────────────────────────
+    for gi in range(1, 4):
+        gs = pygame.Surface((PW + gi*4, PH + gi*4), pygame.SRCALPHA)
+        pygame.draw.rect(gs, (*BORDER_GOLD, 18 // gi),
+                         (0, 0, PW + gi*4, PH + gi*4), border_radius=12 + gi)
+        surface.blit(gs, (PX - gi*2, PY - gi*2))
+
+    # ── Stone background ──────────────────────────────────────
+    pygame.draw.rect(surface, BG_STONE, (PX, PY, PW, PH), border_radius=10)
+
+    # ── Subtle inner texture (two-tone gradient strips) ───────
+    for ty in range(0, PH, 6):
+        strip_col = (28, 22, 17) if (ty // 6) % 2 == 0 else (18, 14, 11)
+        clip_rect = pygame.Rect(PX + 2, PY + ty, PW - 4, min(6, PH - ty - 2))
+        if clip_rect.height > 0:
+            pygame.draw.rect(surface, strip_col, clip_rect)
+
+    # ── Gold border ───────────────────────────────────────────
+    pygame.draw.rect(surface, BORDER_GOLD, (PX, PY, PW, PH), 1, border_radius=10)
+    # Inner thin highlight line
+    pygame.draw.rect(surface, (140, 110, 55), (PX+2, PY+2, PW-4, PH-4), 1, border_radius=8)
+
+    # ── Corner rivets (gold dots) ─────────────────────────────
+    for rx2, ry2 in [(PX+7, PY+7), (PX+PW-8, PY+7),
+                     (PX+7, PY+PH-8), (PX+PW-8, PY+PH-8)]:
+        pygame.draw.circle(surface, BORDER_GOLD, (rx2, ry2), 3)
+        pygame.draw.circle(surface, DF_GOLD,     (rx2-1, ry2-1), 1)
+
+    # ── Rows: icon + bar + number ─────────────────────────────
     rows = [
-        (_draw_heart,   (220, 50,  50),  player.hp,    player.max_hp),
-        (_draw_shield,  (50,  210, 210), player.armor, player.max_armor),
-        (_draw_diamond, (80,  120, 255), player.mana,  player.max_mana),
+        (_draw_heart,   DF_BLOOD_B, player.hp,    player.max_hp,    (255, 80, 80)),
+        (_draw_shield,  DF_FROST,   player.armor, player.max_armor, (120, 230, 240)),
+        (_draw_diamond, DF_MANA,    player.mana,  player.max_mana,  (140, 170, 255)),
     ]
-    for i, (icon_fn, col, val, maxv) in enumerate(rows):
-        row_y  = PY + PAD + i * ROW_H
-        icon_x = PX + ICON // 2 + 4
+    num_font = _font(11)
+    for i, (icon_fn, col, val, maxv, bright) in enumerate(rows):
+        row_y  = PY + 12 + i * ROW_H
+        icon_x = PX + 14 + ICON // 2
         icon_y = row_y + BAR_H // 2
         icon_fn(surface, icon_x, icon_y, ICON, col)
-        bar_x = PX + ICON + 10
-        _draw_sk_bar(surface, bar_x, row_y, BAR_W, BAR_H, val, maxv, col)
-        txt = num_font.render(f"{int(val)}/{int(maxv)}", True, WHITE)
-        surface.blit(txt, (bar_x + BAR_W//2 - txt.get_width()//2,
-                           row_y + BAR_H//2 - txt.get_height()//2))
+
+        bar_x = PX + 14 + ICON + 10
+        # Bar track
+        pygame.draw.rect(surface, (8, 6, 4),
+                         (bar_x, row_y, BAR_W, BAR_H), border_radius=BAR_H // 2)
+        pygame.draw.rect(surface, (50, 40, 30),
+                         (bar_x, row_y, BAR_W, BAR_H), 1, border_radius=BAR_H // 2)
+        # Bar fill
+        pct    = max(0.0, min(1.0, val / max(1e-6, maxv)))
+        fill_w = max(0, int((BAR_W - 4) * pct))
+        if fill_w > 0:
+            pygame.draw.rect(surface, col,
+                             (bar_x + 2, row_y + 2, fill_w, BAR_H - 4),
+                             border_radius=(BAR_H - 4) // 2)
+            # Highlight strip on top third
+            hl = pygame.Surface((fill_w, (BAR_H - 4) // 3 + 1), pygame.SRCALPHA)
+            hl.fill((*bright, 80))
+            surface.blit(hl, (bar_x + 2, row_y + 2))
+            # Glowing right edge dot
+            gx = bar_x + 2 + fill_w - 3
+            ge = pygame.Surface((7, BAR_H - 4), pygame.SRCALPHA)
+            pygame.draw.rect(ge, (*bright, 160), (0, 0, 7, BAR_H - 4),
+                             border_radius=(BAR_H - 4) // 2)
+            surface.blit(ge, (gx, row_y + 2))
+
+        # Number text (parchment color)
+        txt = num_font.render(f"{int(val)}/{int(maxv)}", True, DF_PARCH)
+        surface.blit(txt, (bar_x + BAR_W // 2 - txt.get_width() // 2,
+                           row_y + BAR_H // 2 - txt.get_height() // 2))
 
     # ── BOTTOM HUD strip ──────────────────────────────────────
     hud_y    = SCREEN_H - HUD_H
@@ -607,7 +671,7 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
     time_str = f"{mins:02d}:{secs:02d}"
     right_lines = [
         (f"Stage {current_stage_idx+1}/{total_stages}", (180, 180, 220)),
-        (f"Lv.{player.level}   {player.gold}G",        GOLD),
+        (f"{player.gold} G",                           GOLD),
         (f"  {time_str}",                               (160, 220, 160)),
     ]
     ry = hud_y + 6
