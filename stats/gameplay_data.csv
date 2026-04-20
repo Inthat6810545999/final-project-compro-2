@@ -37,3 +37,4 @@ session_id,timestamp,char_class,outcome,score,enemies_defeated,total_damage,dura
 1776516681_4617,2026-04-18T19:51:21,Sausage Man,death,150,1,41,25,0,1,64,1,0
 1776639357_1876,2026-04-20T05:55:57,Sausage Man,death,1900,9,409,111,0,1,96,1,0
 1776674654_8645,2026-04-20T15:44:14,Sausage Man,death,9730,43,2529,222,6,1,250,1,1
+1776675614_1008,2026-04-20T16:00:14,Sausage Man,death,400,3,122,27,0,1,71,1,0

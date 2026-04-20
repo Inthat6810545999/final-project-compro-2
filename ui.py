@@ -1355,27 +1355,38 @@ class ShootingRangeScreen:
     PLAY_H  = SCREEN_H - HUD_H
 
     def __init__(self):
-        from item import Weapon
-        from constants import WEAPON_POOL
+        from item import Weapon, Armor
+        from constants import WEAPON_POOL, ARMOR_POOL
         self._weapon_list = []
         for entry in WEAPON_POOL:
             effect = entry[9] if len(entry)>9 else None
             w = Weapon(entry[0],entry[1],entry[2],entry[3],
                        entry[4],entry[5],entry[6],"Any",entry[8],effect)
             self._weapon_list.append(w)
+        # armor list: None (ไม่สวม) + ทุกชุดใน pool
+        self._armor_list = [None] + [
+            Armor(e[0], e[1], e[2], e[3], e[4]) for e in ARMOR_POOL
+        ]
+        self.arm_idx = 0   # 0 = ไม่สวมเกราะ
         self.player = None
         self._reset()
 
     def set_player(self, player):
         self.player = player
         if self._weapon_list:
-            self.player.equipment["weapon"] = self._weapon_list[self.wpn_idx]
+            self.player.equip(self._weapon_list[self.wpn_idx])   # unified path
             self.player.shoot_cooldown = 0.0
+        arm = self._armor_list[self.arm_idx]
+        if arm is None:
+            self.player.equip(None, slot="armor")
+        else:
+            self.player.equip(arm)
 
     def _reset(self):
         import random as _r
         self._rnd        = _r.Random()
         self.wpn_idx     = 0
+        self.arm_idx     = 0   # reset armor too
         self.bullets     = []
         self.floats      = []
         self.burst_left  = 0
@@ -1493,11 +1504,20 @@ class ShootingRangeScreen:
             self._shake_mag=max(self._shake_mag,shake_mag)
 
     def _select_weapon(self, idx):
-        self.wpn_idx = idx%len(self._weapon_list)
+        self.wpn_idx = idx % len(self._weapon_list)
         if self.player and self._weapon_list:
-            self.player.equipment["weapon"]=self._weapon_list[self.wpn_idx]
-            self.player.shoot_cooldown=0.0
-        self.burst_left=0
+            self.player.equip(self._weapon_list[self.wpn_idx])   # ← unified path, apply_effect included
+            self.player.shoot_cooldown = 0.0
+        self.burst_left = 0
+
+    def _select_armor(self, idx):
+        self.arm_idx = idx % len(self._armor_list)
+        if self.player:
+            arm = self._armor_list[self.arm_idx]
+            if arm is None:
+                self.player.equip(None, slot="armor")   # unequip
+            else:
+                self.player.equip(arm)                   # equip + apply_effect
 
     def update(self, dt, events, mouse_pos, mouse_buttons):
         p = self.player
@@ -1556,11 +1576,17 @@ class ShootingRangeScreen:
             if ev.type==pygame.KEYDOWN:
                 if ev.key==pygame.K_q: self._select_weapon(self.wpn_idx-1)
                 elif ev.key==pygame.K_e: self._select_weapon(self.wpn_idx+1)
+                elif ev.key==pygame.K_a: self._select_armor(self.arm_idx-1)
+                elif ev.key==pygame.K_d: self._select_armor(self.arm_idx+1)
 
     def handle_click(self, pos):
         if self._btn_back and self._btn_back.collidepoint(pos): return "menu"
         for rect,idx in self._wpn_btns:
             if rect.collidepoint(pos): self._select_weapon(idx)
+        if hasattr(self,"_btn_arm_prev") and self._btn_arm_prev and self._btn_arm_prev.collidepoint(pos):
+            self._select_armor(self.arm_idx - 1)
+        if hasattr(self,"_btn_arm_next") and self._btn_arm_next and self._btn_arm_next.collidepoint(pos):
+            self._select_armor(self.arm_idx + 1)
         return None
 
     def handle_scroll(self, y_offset):
@@ -1639,6 +1665,9 @@ class ShootingRangeScreen:
         else:
             pygame.draw.circle(play_surf,DF_BLOOD_B,(sx,sy),22)
             pygame.draw.circle(play_surf,DF_BONE,(sx,sy),22,2)
+        # ── Armor overlay ─────────────────────────────────────
+        if p and p.equipment.get("armor"):
+            p._draw_armor(play_surf, sx, sy)
         wpn=self._current_weapon()
         if wpn and p:
             p.facing_angle=ang; p.facing_right=facing_right
@@ -1685,13 +1714,40 @@ class ShootingRangeScreen:
         draw_text(surface,"Q / E  to cycle",poff+self.PANEL_W//2,7,9,TEXT_MUTED,center=True)
         draw_text(surface,"WEAPONS",poff+self.PANEL_W//2,20,13,DF_BONE,style="bold",center=True)
 
+        # ── Armor selector (A / D to cycle) ──────────────────
+        arm_y = 40
+        pygame.draw.rect(surface,(18,14,10),(poff+4, arm_y, self.PANEL_W-8, 44), border_radius=5)
+        pygame.draw.rect(surface,BORDER_STONE,(poff+4, arm_y, self.PANEL_W-8, 44), 1, border_radius=5)
+        draw_text(surface,"ARMOR  (A / D)",poff+self.PANEL_W//2, arm_y+3, 8, TEXT_MUTED, center=True)
+        cur_arm = self._armor_list[self.arm_idx]
+        arm_name = cur_arm.name if cur_arm else "None"
+        arm_col  = RARITY_GLOW.get(cur_arm.rarity, DF_ASH) if cur_arm else TEXT_DIM
+        # Prev button
+        self._btn_arm_prev = pygame.Rect(poff+6, arm_y+16, 22, 22)
+        hov_p = self._btn_arm_prev.collidepoint(mouse_pos)
+        pygame.draw.rect(surface,(30,24,18) if hov_p else (20,16,12), self._btn_arm_prev, border_radius=4)
+        pygame.draw.rect(surface,BORDER_STONE, self._btn_arm_prev, 1, border_radius=4)
+        draw_text(surface,"<", poff+17, arm_y+18, 11, DF_BONE, center=True)
+        # Next button
+        self._btn_arm_next = pygame.Rect(poff+self.PANEL_W-28, arm_y+16, 22, 22)
+        hov_n = self._btn_arm_next.collidepoint(mouse_pos)
+        pygame.draw.rect(surface,(30,24,18) if hov_n else (20,16,12), self._btn_arm_next, border_radius=4)
+        pygame.draw.rect(surface,BORDER_STONE, self._btn_arm_next, 1, border_radius=4)
+        draw_text(surface,">", poff+self.PANEL_W-17, arm_y+18, 11, DF_BONE, center=True)
+        # Armor name
+        draw_text(surface, arm_name, poff+self.PANEL_W//2, arm_y+19, 10, arm_col,
+                  style="bold", center=True)
+        if cur_arm:
+            draw_text(surface, f"DEF {cur_arm.defense}", poff+self.PANEL_W//2, arm_y+32, 8,
+                      TEXT_DIM, style="mono", center=True)
+
+        lt=92; lb=self.PLAY_H-58; ih=54
         self._btn_back=draw_button(
             surface,poff+8,self.PLAY_H-50,self.PANEL_W-16,38,
             "EXIT TO MENU",
             pygame.Rect(poff+8,self.PLAY_H-50,self.PANEL_W-16,38).collidepoint(mouse_pos),
             DF_BLOOD,12)
 
-        lt=44; lb=self.PLAY_H-58; ih=54
         vis=(lb-lt)//ih
         self._scroll_max=max(0,(len(self._weapon_list)-vis)*ih)
         self._wpn_btns=[]

@@ -64,7 +64,7 @@ CLASSES = {
         "color": (240, 60, 120),
         "base_hp": 130,
         "max_armor": 80,
-        "max_mana": 100,
+        "max_mana": 300,
         "speed": 3.8,
         "base_damage": 16,
         "fire_rate": 0.75,
