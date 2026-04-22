@@ -294,15 +294,16 @@ class Player:
         if cx: self.x = nx
         if cy: self.y = ny
 
-    def update(self, dt, walls, mouse_pos=None):
+    def update(self, dt, walls, mouse_pos=None, frozen=False):
         if self.iframe_timer > 0:
             self.iframe_timer -= dt
 
-        keys = pygame.key.get_pressed()
-        dx   = int(keys[K_d] or keys[K_RIGHT]) - int(keys[K_a] or keys[K_LEFT])
-        dy   = int(keys[K_s] or keys[K_DOWN])  - int(keys[K_w] or keys[K_UP])
-        if dx != 0 or dy != 0:
-            self.move(dx, dy, walls)
+        if not frozen:
+            keys = pygame.key.get_pressed()
+            dx   = int(keys[K_d] or keys[K_RIGHT]) - int(keys[K_a] or keys[K_LEFT])
+            dy   = int(keys[K_s] or keys[K_DOWN])  - int(keys[K_w] or keys[K_UP])
+            if dx != 0 or dy != 0:
+                self.move(dx, dy, walls)
 
         if mouse_pos:
             self.facing_angle = math.atan2(mouse_pos[1] - self.y, mouse_pos[0] - self.x)

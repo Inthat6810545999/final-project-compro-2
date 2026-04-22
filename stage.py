@@ -13,6 +13,8 @@ from constants import (
 )
 from enemy import make_enemy
 
+DOOR_ANIM_DUR = 1.6   # seconds for boss-door opening animation
+
 # ── TILE TEXTURE CACHE ──────────────────────────────────────────────────────
 _TILE_CACHE: dict = {}
 _SHADOW_TOP  = None
@@ -252,6 +254,45 @@ class AmbientParticle:
             gs=pygame.Surface((self.radius*4+2,self.radius*4+2),pygame.SRCALPHA)
             pygame.draw.circle(gs,(*self.color,self.alpha),(self.radius*2+1,self.radius*2+1),self.radius)
             surface.blit(gs,(sx-self.radius*2-1,sy-self.radius*2-1))
+# ── DOOR-OPEN PARTICLE ──────────────────────────────────────────────────────
+class DoorOpenParticle:
+    """Short-lived spark / debris for boss-door opening VFX."""
+    __slots__ = ("x","y","vx","vy","life","max_life","color","radius","alpha","kind")
+
+    def __init__(self, x, y, color, kind="spark"):
+        self.x = float(x); self.y = float(y)
+        self.color = color; self.kind = kind
+        angle  = random.uniform(0, math.tau)
+        speed  = random.uniform(70, 260)
+        self.vx = math.cos(angle) * speed
+        self.vy = math.sin(angle) * speed - random.uniform(10, 90)
+        self.radius   = random.randint(2, 7) if kind == "spark" else random.randint(3, 10)
+        self.life     = random.uniform(0.35, 0.90)
+        self.max_life = self.life
+        self.alpha    = 255
+
+    def update(self, dt):
+        self.life -= dt
+        if self.life <= 0:
+            return False
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.vy  += 180 * dt          # gravity pull
+        self.vx  *= (1 - 1.5 * dt)   # air drag
+        ratio = self.life / self.max_life
+        self.alpha = int(255 * ratio * ratio)
+        return True
+
+    def draw(self, surface, cam_x, cam_y):
+        sx = int(self.x - cam_x); sy = int(self.y - cam_y)
+        if self.alpha <= 0 or self.radius <= 0:
+            return
+        s = pygame.Surface((self.radius * 2 + 2, self.radius * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*self.color, self.alpha),
+                           (self.radius + 1, self.radius + 1), self.radius)
+        surface.blit(s, (sx - self.radius - 1, sy - self.radius - 1))
+
+
 class BSPNode:
     MIN_ROOM = 5
 
@@ -334,6 +375,11 @@ class Room:
         self.doors_open  = True  # start open; close when player enters with enemies
         self.door_locked = False  # True = permanently locked until boss-room prerequisite met
 
+        # Boss-door opening animation
+        self.door_opening       = False  # True while animation plays
+        self.door_anim_t        = 0.0    # counts down from DOOR_ANIM_DUR
+        self.door_anim_particles: list = []
+
         # Fountain
         self.has_fountain   = False
         self.fountain_used  = False
@@ -376,6 +422,12 @@ class Room:
 
     def update(self, dt):
         self._bob += dt * 2.5
+        # Boss-door opening animation tick
+        if self.door_opening:
+            self.door_anim_t = max(0.0, self.door_anim_t - dt)
+            self.door_anim_particles = [p for p in self.door_anim_particles if p.update(dt)]
+            if self.door_anim_t <= 0 and not self.door_anim_particles:
+                self.door_opening = False
 
     # ── Draw fountain ─────────────────────────────────────────
     def draw_fountain(self, surface, cam_x, cam_y, player=None):
@@ -431,6 +483,10 @@ class Room:
 
     # ── Draw doors ────────────────────────────────────────────
     def draw_doors(self, surface, cam_x, cam_y, theme="dungeon"):
+        # Boss-door opening animation takes priority
+        if self.door_opening and self.door_rects:
+            self._draw_door_opening_anim(surface, cam_x, cam_y, theme)
+            return
         if (self.doors_open and not self.door_locked) or not self.door_rects:
             return
         t = pygame.time.get_ticks() / 1000.0
@@ -635,6 +691,138 @@ class Room:
 
 
 
+    # ── Boss-door opening animation ───────────────────────────
+    def _draw_door_opening_anim(self, surface, cam_x, cam_y, theme):
+        """
+        Cinematic boss-door opening:
+          Phase 0-30 %  – chains shatter (particle burst already emitted)
+          Phase 0-60 %  – golden magic ring expands from center
+          Phase 20-100% – iron bars slide upward & fade out
+          Phase 0-100%  – particles fly
+        """
+        THEME_MAGIC = {
+            "forest":  (60,  220,  80),
+            "dungeon": (160,  80, 255),
+            "volcano": (255, 100,  20),
+            "sky":     ( 80, 190, 255),
+            "chaos":   (220,  40, 200),
+        }
+        magic = THEME_MAGIC.get(theme, (160, 80, 255))
+        gold  = (255, 215, 60)
+
+        progress = 1.0 - max(0.0, self.door_anim_t) / DOOR_ANIM_DUR  # 0 → 1
+
+        STONE_D  = (35, 35, 42)
+        STONE_M  = (58, 60, 72)
+        STONE_H  = (90, 95, 115)
+        IRON_M   = (50, 54, 66)
+        IRON_H   = (105, 115, 138)
+        IRON_SH  = (185, 195, 218)
+        IRON_D   = (22, 24, 30)
+        FRAME    = 10
+
+        for dr in self.door_rects:
+            sx = dr.x - int(cam_x)
+            sy = dr.y - int(cam_y)
+            w, h = dr.w, dr.h
+            ix = sx + FRAME; iy = sy + FRAME
+            iw = w - FRAME * 2; ih = h - FRAME * 2
+            cx2 = sx + w // 2; cy2 = sy + h // 2
+
+            # ── Stone frame fades out slowly ──────────────────
+            frame_alpha = max(0, int(255 * (1.0 - progress * 0.7)))
+            if frame_alpha > 0:
+                fs = pygame.Surface((w, h), pygame.SRCALPHA)
+                pygame.draw.rect(fs, (*STONE_D, frame_alpha), (0, 0, w, h))
+                pygame.draw.rect(fs, (*STONE_M, frame_alpha), (0, 0, w, FRAME))
+                pygame.draw.rect(fs, (*STONE_M, frame_alpha), (0, h - FRAME, w, FRAME))
+                pygame.draw.rect(fs, (*STONE_M, frame_alpha), (0, 0, FRAME, h))
+                pygame.draw.rect(fs, (*STONE_M, frame_alpha), (w - FRAME, 0, FRAME, h))
+                # Bevel highlights
+                pygame.draw.line(fs, (*STONE_H, frame_alpha), (1, 1), (w - 2, 1), 2)
+                pygame.draw.line(fs, (*STONE_H, frame_alpha), (1, 1), (1, h - 2), 2)
+                surface.blit(fs, (sx, sy))
+
+            # ── Inner void + dying magic glow ─────────────────
+            glow_a = max(0, int(120 * (1.0 - progress * 1.5)))
+            if glow_a > 0 and iw > 0 and ih > 0:
+                en = pygame.Surface((iw, ih), pygame.SRCALPHA)
+                en.fill((*magic, glow_a))
+                surface.blit(en, (ix, iy))
+
+            # ── Golden expanding shockwave ring ───────────────
+            if progress < 0.65:
+                t_norm = progress / 0.65
+                ring_r = int(t_norm * max(w, h) * 1.1)
+                ring_a = int(220 * (1.0 - t_norm) ** 1.5)
+                if ring_r > 0 and ring_a > 0:
+                    for thickness, col, a_mul in [
+                        (8,  gold,            1.0),
+                        (4,  (255, 255, 200), 0.7),
+                        (16, gold,            0.3),
+                    ]:
+                        rs = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+                        pygame.draw.circle(rs, (*col, int(ring_a * a_mul)),
+                                           (ring_r + 2, ring_r + 2), ring_r, thickness)
+                        surface.blit(rs, (cx2 - ring_r - 2, cy2 - ring_r - 2))
+
+            # ── Central flash (very early) ────────────────────
+            if progress < 0.20:
+                flash_a = int(200 * (1.0 - progress / 0.20) ** 2)
+                if flash_a > 0 and iw > 0 and ih > 0:
+                    fl = pygame.Surface((iw + 20, ih + 20), pygame.SRCALPHA)
+                    fl.fill((*gold, flash_a))
+                    surface.blit(fl, (ix - 10, iy - 10))
+
+            # ── Iron bars slide upward & fade ─────────────────
+            bar_progress = max(0.0, (progress - 0.15) / 0.85)  # start sliding at 15 %
+            slide_px = int(bar_progress * (h + 30))
+            bar_alpha = max(0, int(255 * (1.0 - bar_progress * 1.2)))
+
+            if bar_alpha > 0 and iw > 0 and ih > 0:
+                bar_count = max(3, iw // 14)
+                bar_thick = 6
+                spacing   = iw / bar_count
+
+                # How many pixels of bar are still visible (clipped at top)
+                visible_h = max(0, ih - slide_px)
+                if visible_h > 0:
+                    bs = pygame.Surface((iw, visible_h), pygame.SRCALPHA)
+                    for i in range(bar_count + 1):
+                        bx_c = int(i * spacing)
+                        bx_l = bx_c - bar_thick // 2
+                        if bx_l < 0: bx_l = 0
+                        if bx_l >= iw: continue
+                        bw = min(bar_thick, iw - bx_l)
+                        pygame.draw.rect(bs, (*IRON_M, bar_alpha), (bx_l, 0, bw, visible_h))
+                        pygame.draw.line(bs, (*IRON_H, bar_alpha),
+                                         (bx_l + 1, 3), (bx_l + 1, visible_h - 3), 2)
+                        pygame.draw.line(bs, (*IRON_SH, min(bar_alpha, 200)),
+                                         (bx_l + 1, 4), (bx_l + 2, 14), 1)
+                        pygame.draw.line(bs, (*IRON_D, bar_alpha),
+                                         (bx_l + bw - 1, 0), (bx_l + bw - 1, visible_h), 1)
+                    # Horizontal reinforcing bars
+                    for rel_y in [visible_h // 3, visible_h * 2 // 3]:
+                        if 0 < rel_y < visible_h - 4:
+                            pygame.draw.rect(bs, (*IRON_M, bar_alpha), (0, rel_y - 3, iw, 6))
+                            pygame.draw.line(bs, (*IRON_H, bar_alpha),
+                                             (0, rel_y - 2), (iw, rel_y - 2), 1)
+                    surface.blit(bs, (ix, iy))
+
+            # ── Outer glow pulse (gold) ────────────────────────
+            if progress < 0.50:
+                gout_a = int(140 * (1.0 - progress / 0.50))
+                for gs2 in (6, 3, 1):
+                    gg = pygame.Surface((w + gs2 * 4, h + gs2 * 4), pygame.SRCALPHA)
+                    pygame.draw.rect(gg, (*gold, int(gout_a * (0.3 + gs2 * 0.1))),
+                                     (0, 0, w + gs2 * 4, h + gs2 * 4), gs2, border_radius=6)
+                    surface.blit(gg, (sx - gs2 * 2, sy - gs2 * 2))
+
+        # Draw particles on top of everything
+        for p in self.door_anim_particles:
+            p.draw(surface, cam_x, cam_y)
+
+
 # ─────────────────────────────────────────────────────────────
 class Stage:
     MAP_W = 60   # large canvas so rooms have breathing room between them
@@ -753,12 +941,23 @@ class Stage:
             self._torch_positions.append((wx, wy))
             return room
 
+        # ── Room budget per stage ──────────────────────────────
+        # Stage 1 : hub + 3 spokes          = 4 rooms max
+        # Stage 2 : hub + 4 spokes + 1 sec  = 6 rooms max
+        # Stage 3 : hub + 4 spokes + 2 sec  = 7 rooms max
+        # Stage 4 : hub + 4 spokes + 3 sec + 1 ter = 9 rooms max
+        # Stage 5+: hub + 4 spokes + 3 sec + 2 ter = 10 rooms max
+        # stage_id is 0-based: 0=stage1, 1=stage2, ...
+        max_primary   = 3 if self.stage_id == 0 else 4
+        max_secondary = {0: 0, 1: 1, 2: 2}.get(self.stage_id, 3)
+        max_tertiary  = max(0, self.stage_id - 2)   # 0,0,0,1,2 for stages 0-4
+
         # ── 3) Primary spokes N/S/E/W from hub ────────────────
         dirs = ["N", "S", "E", "W"]
         random.shuffle(dirs)
         placed = []   # list of (dir, room_rect)
         primary_spoke_rects = []   # track primary spoke room_rects for boss selection
-        for d in dirs:
+        for d in dirs[:max_primary]:
             r = branch(d, hub)
             if r:
                 placed.append((d, r))
@@ -774,7 +973,10 @@ class Stage:
             "E": ["N", "S"], "W": ["N", "S"],
         }
         secondary = []
+        sec_count = 0
         for par_d, par_r in placed:
+            if sec_count >= max_secondary:
+                break
             if par_r is boss_spoke_rect:
                 continue   # boss room connects ONLY to hub — no children
             perps = perp_map[par_d][:]
@@ -786,13 +988,17 @@ class Stage:
                             rh=random.randint(5, 8))
                 if r2:
                     secondary.append((pd, r2))
+                    sec_count += 1
                     break   # one secondary per spoke
 
-        # ── 5) Tertiary branches (stage ≥ 2) — also skip boss spoke ──
-        if self.stage_id >= 2:
+        # ── 5) Tertiary branches (stage ≥ 4) — also skip boss spoke ──
+        if max_tertiary > 0:
             all_placed = placed + secondary
             random.shuffle(all_placed)
-            for par_d, par_r in all_placed[:2]:
+            ter_count = 0
+            for par_d, par_r in all_placed:
+                if ter_count >= max_tertiary:
+                    break
                 if par_r is boss_spoke_rect:
                     continue   # never extend from boss room
                 for td in [par_d] + perp_map[par_d]:
@@ -801,6 +1007,7 @@ class Stage:
                                 rw=random.randint(5, 8),
                                 rh=random.randint(5, 7))
                     if r3:
+                        ter_count += 1
                         break
 
         # ── 6) Build wall_rects from tilemap ──────────────────
@@ -870,7 +1077,27 @@ class Stage:
             self.wall_rects.append(dr)
 
     def open_room_doors(self, room):
-        """Remove door rects from wall_rects."""
+        """Remove door rects from wall_rects, trigger opening animation for boss rooms."""
+        # ── Boss door: fire animation BEFORE the early-return check ──────────
+        # Boss room starts with doors_open=True (never closed), so we must
+        # trigger the animation here regardless of doors_open state.
+        if room.is_boss and room.door_rects and not room.door_opening:
+            room.door_opening = True
+            room.door_anim_t  = DOOR_ANIM_DUR
+            room.door_anim_particles.clear()
+            gold_cols  = [(255, 215,  60), (255, 255, 160), (255, 180,  30)]
+            magic_cols = [(200, 120, 255), (255,  80, 200), (120, 200, 255), (255, 255, 200)]
+            for dr in room.door_rects:
+                cx, cy = dr.centerx, dr.centery
+                for _ in range(35):                       # dense sparks
+                    col = random.choice(gold_cols + magic_cols)
+                    room.door_anim_particles.append(
+                        DoorOpenParticle(cx, cy, col, kind="spark"))
+                for _ in range(10):                       # larger debris
+                    col = random.choice(gold_cols)
+                    room.door_anim_particles.append(
+                        DoorOpenParticle(cx, cy, col, kind="chunk"))
+
         if room.doors_open:
             return
         room.doors_open = True

@@ -563,7 +563,7 @@ class GameManager:
 
         # Golden flash tint
         flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        flash.fill((255, 200, 40, int(alpha * 0.25)))
+        flash.fill(pygame.Color(255, 200, 40, max(0, min(255, int(alpha * 0.25)))))
         surface.blit(flash, (0, 0))
 
         txt   = "BOSS DEFEATED!"
@@ -1013,6 +1013,9 @@ class GameManager:
         self.boss_ready_timer = 0.0
         self.boss_death_timer = 0.0
         self.boss_death_particles = []
+        self.boss_unlock_flash  = 0.0   # screen-flash timer when boss door opens
+        self.boss_door_arrow_t  = 0.0   # how long to show the direction arrow
+        self.cam_pan_timer      = 0.0   # camera pan to boss door timer
         for e in self.enemies:
             if isinstance(e, _BE):
                 self.boss_entity = e
@@ -1162,9 +1165,60 @@ class GameManager:
 
         world_mouse = (mouse_pos[0] + cam_x, mouse_pos[1] + cam_y)
 
-        # Player update (includes movement + regen)
-        p.update(dt, walls, world_mouse)
-        self.stage.update_camera(p.x, p.y)
+        # Player update — freeze movement during boss-door cinematic pan
+        _in_pan = getattr(self, 'cam_pan_timer', 0.0) > 0
+        if _in_pan:
+            p.update(dt, walls, world_mouse, frozen=True)   # regen still ticks; no movement
+        else:
+            p.update(dt, walls, world_mouse)
+        # ── Camera: cinematic pan to boss door on unlock ──────────
+        pan_t = getattr(self, 'cam_pan_timer', 0.0)
+        PAN_DUR = 6.0   # total cinematic length (seconds)
+        SLIDE   = 1.5   # slide-in duration
+        HOLD    = 3.0   # hold-at-boss-door duration
+        SLIDE_B = PAN_DUR - SLIDE - HOLD  # slide-back duration (1.5 s)
+
+        if pan_t > 0 and self.stage.boss_room:
+            bx, by = self.stage.boss_room.cx, self.stage.boss_room.cy
+            px0, py0 = getattr(self, '_pan_origin', (p.x, p.y))
+
+            if pan_t > HOLD + SLIDE_B:                   # ── sliding TO boss ──
+                frac = (PAN_DUR - pan_t) / SLIDE
+                frac = max(0.0, min(1.0, frac))
+                frac = frac * frac * (3 - 2 * frac)      # smoothstep
+                vx = px0 + (bx - px0) * frac
+                vy = py0 + (by - py0) * frac
+                # Shake burst the moment we arrive (one-shot)
+                if frac >= 0.98 and not getattr(self, '_pan_arrived_shake', False):
+                    self.shake_timer = 0.55
+                    self.shake_mag   = 14
+                    self._pan_arrived_shake = True
+
+            elif pan_t > SLIDE_B:                        # ── holding at boss ──
+                vx, vy = bx, by
+                # Pulse shake while holding to feel alive
+                if not hasattr(self, '_pan_hold_shake_cd'):
+                    self._pan_hold_shake_cd = 0.0
+                self._pan_hold_shake_cd -= dt
+                if self._pan_hold_shake_cd <= 0:
+                    self.shake_timer = 0.18
+                    self.shake_mag   = 5
+                    self._pan_hold_shake_cd = 0.8
+
+            else:                                        # ── sliding BACK ──
+                frac = pan_t / SLIDE_B
+                frac = max(0.0, min(1.0, frac))
+                frac = frac * frac * (3 - 2 * frac)
+                vx = p.x + (bx - p.x) * frac
+                vy = p.y + (by - p.y) * frac
+
+            self.stage.update_camera(vx, vy)
+        else:
+            self.stage.update_camera(p.x, p.y)
+            # Clean up one-shot flags when pan ends
+            self._pan_arrived_shake = False
+            if hasattr(self, '_pan_hold_shake_cd'):
+                del self._pan_hold_shake_cd
         self.stage.update(dt)
 
         # ── Room door / fountain management ───────────────────
@@ -1214,10 +1268,16 @@ class GameManager:
             non_boss = [r for r in self.stage.rooms if not r.is_boss]
             if all(r.cleared for r in non_boss):
                 boss_room.door_locked = False
-                self.stage.open_room_doors(boss_room)   # removes door_rects from wall_rects
+                self.stage.open_room_doors(boss_room)
                 self._add_fx(boss_room.cx, boss_room.cy - 80,
                              "⚔ BOSS ROOM UNLOCKED! ⚔", (255, 200, 50), 26)
                 self.sfx.play("portal_open")
+                # Cinematic camera pan — 6-second dramatic sweep
+                self.cam_pan_timer      = 6.0
+                self.boss_unlock_flash  = 5.5   # flash lasts longer
+                self.boss_door_arrow_t  = 9.0   # arrow shows 9 s
+                self._pan_origin        = (p.x, p.y)   # remember where player was
+                self._pan_arrived_shake = False
             else:
                 # แสดง warning เมื่อเข้าใกล้ประตู boss room ที่ยัง locked
                 if boss_room.door_rects:
@@ -1234,6 +1294,14 @@ class GameManager:
         # ── Tick boss lock warning cooldown ──────────────────────
         if getattr(self, '_boss_lock_warn_cd', 0) > 0:
             self._boss_lock_warn_cd = max(0.0, self._boss_lock_warn_cd - dt)
+
+        # ── Tick boss-unlock screen effects ──────────────────────
+        if getattr(self, 'boss_unlock_flash', 0) > 0:
+            self.boss_unlock_flash = max(0.0, self.boss_unlock_flash - dt * 1.8)
+        if getattr(self, 'cam_pan_timer', 0) > 0:
+            self.cam_pan_timer = max(0.0, self.cam_pan_timer - dt)
+        if getattr(self, 'boss_door_arrow_t', 0) > 0:
+            self.boss_door_arrow_t = max(0.0, self.boss_door_arrow_t - dt)
 
         # ── ห้องใครห้องมัน: keep enemies inside their home room ──
         from constants import TILE as _TILE
@@ -1621,6 +1689,234 @@ class GameManager:
                 self.sfx.play("portal_open")
 
     # ── Render ───────────────────────────────────────────────
+    def _draw_boss_unlock_fx(self, surface):
+        """Cinematic boss-door unlock overlay: letterbox + vignette + pulsing banner."""
+        import math as _math
+        pan_t    = getattr(self, 'cam_pan_timer', 0.0)
+        flash_a  = getattr(self, 'boss_unlock_flash', 0.0)
+        if pan_t <= 0 and flash_a <= 0:
+            return
+
+        PAN_DUR = 6.0
+        SLIDE   = 1.5
+        HOLD    = 3.0
+        SLIDE_B = PAN_DUR - SLIDE - HOLD
+        t_now   = pygame.time.get_ticks() / 1000.0
+        w, h    = surface.get_size()
+
+        # ── 1. Letterbox bars (cinematic black bars top + bottom) ──
+        if pan_t > 0:
+            # Ease-in bars: appear over 0.4 s at start, hide over 0.4 s at end
+            bar_frac = 1.0
+            if pan_t > PAN_DUR - 0.4:
+                bar_frac = (PAN_DUR - pan_t) / 0.4
+            elif pan_t < 0.4:
+                bar_frac = pan_t / 0.4
+            bar_frac = max(0.0, min(1.0, bar_frac))
+            bar_h    = int(70 * bar_frac)
+            if bar_h > 0:
+                pygame.draw.rect(surface, (0, 0, 0), (0, 0, w, bar_h))
+                pygame.draw.rect(surface, (0, 0, 0), (0, h - bar_h, w, bar_h))
+                # Thin gold line on bar edge
+                gold_a = int(180 * bar_frac)
+                gl = pygame.Surface((w, 2), pygame.SRCALPHA)
+                gl.fill((255, 200, 40, gold_a))
+                surface.blit(gl, (0, bar_h))
+                surface.blit(gl, (0, h - bar_h - 2))
+
+        # ── 2. Full-screen golden flash (first ~1 s) ───────────────
+        if flash_a > 0:
+            a = int(220 * flash_a * flash_a)
+            if a > 0:
+                fl = pygame.Surface((w, h), pygame.SRCALPHA)
+                fl.fill((0, 0, 0, 0))  # clear to transparent
+                # Multi-layer vignette border glow
+                for thick, mul in [(60, 1.0), (35, 0.55), (18, 0.25)]:
+                    ba = max(0, min(255, int(a * mul)))
+                    if ba > 0:
+                        col = pygame.Color(255, 200, 40, ba)
+                        fl.fill(col, (0,       0,       w,     thick))  # top
+                        fl.fill(col, (0,       h-thick, w,     thick))  # bottom
+                        fl.fill(col, (0,       0,       thick, h    ))  # left
+                        fl.fill(col, (w-thick, 0,       thick, h    ))  # right
+                # Center wash
+                ca = max(0, min(255, int(a * 0.12)))
+                fl.fill(pygame.Color(255, 200, 40, ca))
+                surface.blit(fl, (0, 0))
+
+        # ── 3. Dramatic "BOSS DOOR OPEN" banner ────────────────────
+        # Visible during entire cinematic (pan_t > 0)
+        if pan_t > 0:
+            # Banner fades in over 0.3 s, holds, fades out last 0.5 s
+            b_alpha = 1.0
+            if pan_t > PAN_DUR - 0.3:
+                b_alpha = (PAN_DUR - pan_t) / 0.3
+            elif pan_t < 0.5:
+                b_alpha = pan_t / 0.5
+            b_alpha = max(0.0, min(1.0, b_alpha))
+
+            # Phase indicator: sliding-in / holding / returning
+            in_hold = (SLIDE_B < pan_t <= SLIDE_B + HOLD)
+            in_slide_back = (pan_t <= SLIDE_B)
+
+            # Pulse effect during hold
+            pulse = 0.85 + 0.15 * _math.sin(t_now * 4.5) if in_hold else 1.0
+
+            try:
+                big_font = pygame.font.SysFont("impact", 52)
+                sub_font = pygame.font.SysFont("impact", 22)
+            except Exception:
+                big_font = pygame.font.Font(None, 58)
+                sub_font = pygame.font.Font(None, 26)
+
+            # Main banner
+            main_col  = (255, 220, 50) if in_hold else (255, 200, 40)
+            main_text = big_font.render("⚔  BOSS ROOM UNLOCKED  ⚔", True, main_col)
+            shd_text  = big_font.render("⚔  BOSS ROOM UNLOCKED  ⚔", True, (60, 30, 0))
+
+            # Subtitle changes per phase
+            if in_slide_back:
+                sub_str = "GET READY FOR BATTLE"
+                sub_col = (255, 120, 80)
+            elif in_hold:
+                sub_str = "ALL ROOMS CLEARED  —  THE FINAL CHALLENGE AWAITS"
+                sub_col = (220, 210, 160)
+            else:
+                sub_str = "THE DOOR IS OPENING..."
+                sub_col = (200, 200, 200)
+            sub_text = sub_font.render(sub_str, True, sub_col)
+
+            bx2 = w // 2 - main_text.get_width() // 2
+            by2 = h // 2 - main_text.get_height() // 2 - 30
+
+            final_alpha = int(255 * b_alpha * pulse)
+
+            # Shadow
+            ss = pygame.Surface(shd_text.get_size(), pygame.SRCALPHA)
+            ss.blit(shd_text, (0, 0)); ss.set_alpha(final_alpha)
+            surface.blit(ss, (bx2 + 4, by2 + 4))
+
+            # Main
+            ms = pygame.Surface(main_text.get_size(), pygame.SRCALPHA)
+            ms.blit(main_text, (0, 0)); ms.set_alpha(final_alpha)
+            surface.blit(ms, (bx2, by2))
+
+            # Subtitle
+            sub_x = w // 2 - sub_text.get_width() // 2
+            sub_y = by2 + main_text.get_height() + 8
+            subs = pygame.Surface(sub_text.get_size(), pygame.SRCALPHA)
+            subs.blit(sub_text, (0, 0)); subs.set_alpha(int(final_alpha * 0.88))
+            surface.blit(subs, (sub_x, sub_y))
+
+            # ── Pulsing gold divider lines ──────────────────────
+            if in_hold:
+                line_a = int(180 * b_alpha * pulse)
+                line_y1 = by2 - 10
+                line_y2 = sub_y + sub_text.get_height() + 10
+                for ly in (line_y1, line_y2):
+                    ls = pygame.Surface((w - 120, 2), pygame.SRCALPHA)
+                    ls.fill((255, 200, 40, line_a))
+                    surface.blit(ls, (60, ly))
+
+            # ── Red "GET READY" pulse when returning ────────────
+            if in_slide_back and pan_t < SLIDE_B * 0.7:
+                pulse2  = 0.6 + 0.4 * abs(_math.sin(t_now * 8.0))
+                try:
+                    warn_font = pygame.font.SysFont("impact", 40)
+                except Exception:
+                    warn_font = pygame.font.Font(None, 46)
+                warn_text = warn_font.render("⚡ GET READY ⚡", True, (255, 80, 60))
+                wa = int(255 * (pan_t / (SLIDE_B * 0.7)) * pulse2)
+                ws = pygame.Surface(warn_text.get_size(), pygame.SRCALPHA)
+                ws.blit(warn_text, (0, 0)); ws.set_alpha(wa)
+                surface.blit(ws, (w // 2 - warn_text.get_width() // 2,
+                                  by2 - warn_text.get_height() - 18))
+
+    def _draw_boss_door_arrow(self, surface):
+        """Screen-edge arrow pointing toward boss door, fades out after 6 s."""
+        t = getattr(self, 'boss_door_arrow_t', 0.0)
+        if t <= 0:
+            return
+        boss_room = getattr(self.stage, 'boss_room', None)
+        if boss_room is None:
+            return
+
+        # Convert boss room center to screen space
+        bsx = boss_room.cx - self.stage.cam_x
+        bsy = boss_room.cy - self.stage.cam_y
+        w, h = surface.get_size()
+        from constants import HUD_H
+        play_h = h - HUD_H
+
+        # If boss door is already on screen, skip the arrow
+        MARGIN = 60
+        if MARGIN < bsx < w - MARGIN and MARGIN < bsy < play_h - MARGIN:
+            return
+
+        # Direction from screen center to boss room
+        cx, cy = w / 2, play_h / 2
+        dx, dy = bsx - cx, bsy - cy
+        dist = math.hypot(dx, dy) or 1
+        nx, ny = dx / dist, dy / dist
+
+        # Clamp arrow to screen edge
+        EDGE = 52
+        if abs(nx) > abs(ny):
+            t_x = (w - EDGE if nx > 0 else EDGE)
+            t_y = cy + ny * ((t_x - cx) / (nx or 1e-9))
+            t_y = max(EDGE, min(play_h - EDGE, t_y))
+        else:
+            t_y = (play_h - EDGE if ny > 0 else EDGE)
+            t_x = cx + nx * ((t_y - cy) / (ny or 1e-9))
+            t_x = max(EDGE, min(w - EDGE, t_x))
+
+        arrow_x, arrow_y = int(t_x), int(t_y)
+        angle = math.degrees(math.atan2(ny, nx))
+
+        # Alpha pulses & fades
+        pulse = 0.75 + 0.25 * math.sin(pygame.time.get_ticks() / 220.0)
+        fade  = min(1.0, t / 1.5)           # fade in at start
+        fade  = min(fade, min(1.0, t))      # fade out at end
+        alpha = int(255 * pulse * fade)
+
+        # Draw arrow shape on a small surface then rotate
+        A_W, A_H = 44, 28
+        arr_surf = pygame.Surface((A_W + 12, A_H + 12), pygame.SRCALPHA)
+        gold   = (255, 210, 40, alpha)
+        gold_d = (120, 80, 0, alpha)
+        # Arrow head (triangle pointing right)
+        pts = [
+            (A_W + 6,  (A_H + 12) // 2),          # tip
+            (A_W // 2, 4),                          # top
+            (A_W // 2, (A_H + 12) // 2 - 5),       # notch top
+            (4,        (A_H + 12) // 2 - 5),        # shaft top-left
+            (4,        (A_H + 12) // 2 + 5),        # shaft bot-left
+            (A_W // 2, (A_H + 12) // 2 + 5),        # notch bot
+            (A_W // 2, A_H + 8),                    # bottom
+        ]
+        pygame.draw.polygon(arr_surf, gold_d, pts)
+        inner = [(x + 2, y) for x, y in pts]
+        pygame.draw.polygon(arr_surf, gold, pts)
+        pygame.draw.polygon(arr_surf, pygame.Color(255, 255, 180, max(0, min(255, int(alpha)))), pts, 2)
+
+        rotated = pygame.transform.rotate(arr_surf, -angle)
+        rw, rh = rotated.get_size()
+        surface.blit(rotated, (arrow_x - rw // 2, arrow_y - rh // 2))
+
+        # Small "BOSS" label below arrow
+        try:
+            fnt = pygame.font.SysFont("impact", 14)
+        except Exception:
+            fnt = pygame.font.Font(None, 16)
+        lbl = fnt.render("BOSS", True, (255, 230, 80))
+        ls = pygame.Surface(lbl.get_size(), pygame.SRCALPHA)
+        ls.blit(lbl, (0, 0))
+        ls.set_alpha(alpha)
+        offset_x = int(ny * 26)   # perpendicular nudge
+        offset_y = int(-nx * 26)
+        surface.blit(ls, (arrow_x - lbl.get_width() // 2 + offset_x,
+                          arrow_y - lbl.get_height() // 2 + offset_y))
+
     def _render(self, mouse_pos, dt=0.016):
         self.screen.fill((12, 12, 20))
 
@@ -1683,6 +1979,9 @@ class GameManager:
                 self._draw_boss_spawn_cinematic(self.screen)
             if self.boss_ready_timer > 0:
                 self._draw_boss_ready_overlay(self.screen)
+            # ── Boss-door unlock screen fx (always on top) ─────
+            self._draw_boss_unlock_fx(self.screen)
+            self._draw_boss_door_arrow(self.screen)
 
         elif self.state == STATE_INVENTORY:
             # Draw game behind inventory
