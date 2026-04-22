@@ -170,7 +170,11 @@ class Player:
         self.passive = cfg.get("passive", "")
 
         self._armor_regen_timer = 0.0
-        # No passive mana regen — mana is recovered by killing enemies
+
+        # Passive mana regen: 8 mana/sec, starts after 2s without shooting
+        self.mana_regen_rate   = 8.0   # mana per second (ปรับค่าได้)
+        self.mana_regen_delay  = 2.0   # วินาทีหลังยิงค่อย regen
+        self._mana_regen_timer = 0.0   # นับขึ้นตลอด, reset เมื่อยิง
 
         # ── Armor visual FX system ────────────────────────────────────
         self._armor_particles: list = []
@@ -310,6 +314,11 @@ class Player:
         self._armor_regen_timer += dt
         if self._armor_regen_timer > 1.0:
             self.armor = min(self.max_armor, self.armor + 12.0 * dt)
+
+        # ── Mana regen ────────────────────────────────────────────
+        self._mana_regen_timer += dt
+        if self._mana_regen_timer >= self.mana_regen_delay and self.mana < self.max_mana:
+            self.mana = min(self.max_mana, self.mana + self.mana_regen_rate * dt)
 
         self._update_armor_fx(dt)
 
@@ -864,5 +873,6 @@ class Player:
     def use_mana(self, amount):
         if self.can_use_mana(amount):
             self.mana -= amount
+            self._mana_regen_timer = 0.0   # reset delay หลังยิง
             return True
         return False

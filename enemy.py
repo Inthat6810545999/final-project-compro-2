@@ -376,13 +376,24 @@ class BossEnemy(RangedEnemy):
         )
         self._sprite_hurt_r = None
         self._sprite_hurt_l = None
+        # ── Cinematic timers ──────────────────────────────────
+        self.spawn_anim_timer  = 2.2   # plays on activation; scales sprite in
+        self.phase_flash_timer = 0.0   # orange flash when entering phase 2
+        self._boss_diam        = boss_diam
 
     def update(self, player, walls, dt, bullets_out):
+        # Tick cinematic timers
+        if self.spawn_anim_timer > 0:
+            self.spawn_anim_timer = max(0.0, self.spawn_anim_timer - dt)
+        if self.phase_flash_timer > 0:
+            self.phase_flash_timer = max(0.0, self.phase_flash_timer - dt)
+
         if self.hp < self.max_hp * 0.5 and self.phase == 1:
-            self.phase       = 2
-            self.shoot_cd    = 0.7
-            self.burst_count = 5
-            self.speed      *= 1.3
+            self.phase             = 2
+            self.shoot_cd          = 0.7
+            self.burst_count       = 5
+            self.speed            *= 1.3
+            self.phase_flash_timer = 1.8   # trigger orange screen flash
         super().update(player, walls, dt, bullets_out)
 
     def _do_attack(self, player, bullets_out, dt, walls):
@@ -401,20 +412,93 @@ class BossEnemy(RangedEnemy):
             self.shoot_timer = self.shoot_cd
 
     def draw(self, surface, cam_x=0, cam_y=0):
-        super().draw(surface, cam_x, cam_y)
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         t  = pygame.time.get_ticks() / 1000.0
+
+        # ── Spawn scale-in animation ───────────────────────────
+        spawn_t   = self.spawn_anim_timer        # counts DOWN from 2.2 → 0
+        spawn_pct = 1.0 - max(0.0, spawn_t / 2.2)   # 0.0 → 1.0 as animation plays
+
+        # ── Phase-2 screen flash overlay ─────────────────────
+        if self.phase_flash_timer > 0:
+            alpha = int(min(220, self.phase_flash_timer * 160))
+            fl = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+            fl.fill((255, 80, 0, alpha))
+            surface.blit(fl, (0, 0))
+            # Big "PHASE 2" label bursting from boss position
+            try:
+                pf_font = pygame.font.SysFont("Arial", 46, bold=True)
+            except Exception:
+                pf_font = pygame.font.Font(None, 54)
+            pf_surf = pf_font.render("⚡ PHASE 2 ⚡", True, (255, 240, 60))
+            surface.blit(pf_surf, (sx - pf_surf.get_width() // 2,
+                                   sy - self.size * 4 - 60))
+
+        # ── Base draw (uses parent which handles sprite + HP bar) ─
+        # But we intercept to apply spawn scale
+        r  = self.size
         ring_col = ORANGE if self.phase == 2 else YELLOW
-        # Pulsing aura
-        pulse = int(math.sin(t * 5) * 4)
-        gw = pygame.Surface(((self.size+20)*2+4,(self.size+20)*2+4), pygame.SRCALPHA)
-        pygame.draw.circle(gw, (*ring_col,35), (self.size+22,self.size+22), self.size+18+pulse)
-        surface.blit(gw, (sx-self.size-22, sy-self.size-22))
-        # Double rings
-        pygame.draw.circle(surface, ring_col, (sx, sy), self.size + 6 + pulse, 3)
-        pygame.draw.circle(surface, WHITE, (sx, sy), self.size + 10 + pulse, 1)
-        # Phase 2: spinning arc decoration
+
+        # Pulsing aura (skip during spawn)
+        if spawn_pct >= 0.5:
+            pulse = int(math.sin(t * 5) * 4)
+            gw = pygame.Surface(((self.size+20)*2+4,(self.size+20)*2+4), pygame.SRCALPHA)
+            aura_alpha = int(35 * min(1.0, (spawn_pct - 0.5) / 0.5))
+            pygame.draw.circle(gw, (*ring_col, aura_alpha),
+                               (self.size+22, self.size+22), self.size+18+pulse)
+            surface.blit(gw, (sx-self.size-22, sy-self.size-22))
+
+        # Drop shadow
+        shadow_s = pygame.Surface((r*4, r*2), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_s, (0,0,0,70), (0,0,r*4,r*2))
+        surface.blit(shadow_s, (sx-r*2, sy+r//2))
+
+        # ── Draw sprite / fallback circle with spawn scale ──
+        raw_right = self._sprite_right
+        raw_left  = self._sprite_left
+        if raw_right and spawn_pct < 1.0:
+            # Scale sprite by spawn_pct (elastic ease-out)
+            ease = 1.0 - (1.0 - spawn_pct) ** 3
+            orig_w, orig_h = raw_right.get_size()
+            sw = max(2, int(orig_w * ease))
+            sh = max(2, int(orig_h * ease))
+            raw_right = pygame.transform.smoothscale(raw_right, (sw, sh))
+            raw_left  = pygame.transform.smoothscale(
+                (self._sprite_left or raw_right), (sw, sh))
+
+        if raw_right:
+            base = raw_left if self._facing_left else raw_right
+            if self.hurt_timer > 0:
+                img = base.copy()
+                iw, ih = img.get_size()
+                flash_s = pygame.Surface((iw, ih), pygame.SRCALPHA)
+                flash_r = min(iw, ih) // 2
+                pygame.draw.circle(flash_s, (255, 255, 255, 210),
+                                   (iw // 2, ih // 2), flash_r)
+                img.blit(flash_s, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            else:
+                img = base
+            draw_rect = img.get_rect(center=(sx, sy))
+            surface.blit(img, draw_rect)
+            bar_w = img.get_width()
+            bx    = sx - bar_w // 2
+            by    = draw_rect.top - 8
+        else:
+            col = self.color
+            if self.hurt_timer > 0:
+                col = (255, 180, 180)
+            scale_r = max(2, int(r * (1.0 - (1.0 - spawn_pct) ** 3)))
+            pygame.draw.circle(surface, col, (sx, sy), scale_r)
+            bx = sx - r; by = sy - r - 10
+
+        # ── Double rings ─────────────────────────────────────
+        if spawn_pct > 0.4:
+            pulse = int(math.sin(t * 5) * 4)
+            pygame.draw.circle(surface, ring_col, (sx, sy), self.size + 6 + pulse, 3)
+            pygame.draw.circle(surface, WHITE, (sx, sy), self.size + 10 + pulse, 1)
+
+        # ── Phase 2: spinning arc decoration ─────────────────
         if self.phase == 2:
             arc_surf = pygame.Surface(((self.size+16)*2+4,(self.size+16)*2+4), pygame.SRCALPHA)
             ar = self.size + 14
@@ -424,6 +508,14 @@ class BossEnemy(RangedEnemy):
             pygame.draw.arc(arc_surf,(255,80,20,200),(2,2,ar*2,ar*2),
                             math.radians(start_a+180),math.radians(start_a+300),3)
             surface.blit(arc_surf,(sx-ar-2,sy-ar-2))
+
+        # ── Shockwave ring during spawn ───────────────────────
+        if 0.0 < spawn_t < 2.0:
+            ring_r = int((2.0 - spawn_t) / 2.0 * 180)
+            ring_alpha = max(0, int(120 * (spawn_t / 2.0)))
+            sw2 = pygame.Surface((ring_r*2+4, ring_r*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(sw2, (*ring_col, ring_alpha), (ring_r+2, ring_r+2), ring_r, 3)
+            surface.blit(sw2, (sx - ring_r - 2, sy - ring_r - 2))
 
 
 class EliteShooterEnemy(RangedEnemy):

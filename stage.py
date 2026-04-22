@@ -332,6 +332,7 @@ class Room:
         # Door system
         self.door_rects  = []   # list of pygame.Rect (pixel) — corridor entry tiles
         self.doors_open  = True  # start open; close when player enters with enemies
+        self.door_locked = False  # True = permanently locked until boss-room prerequisite met
 
         # Fountain
         self.has_fountain   = False
@@ -430,7 +431,7 @@ class Room:
 
     # ── Draw doors ────────────────────────────────────────────
     def draw_doors(self, surface, cam_x, cam_y, theme="dungeon"):
-        if self.doors_open or not self.door_rects:
+        if (self.doors_open and not self.door_locked) or not self.door_rects:
             return
         t = pygame.time.get_ticks() / 1000.0
 
@@ -575,6 +576,61 @@ class Room:
             pygame.draw.rect(sk, (0, 0, 0, 180), (9, 11, 4, 3), border_radius=1)
             surface.blit(sk, (cx2 - 11, cy2 - 11))
 
+            # ── 9. Boss-lock overlay (gold chains + lock + label) ──
+            if self.door_locked:
+                DF_GOLD   = (200, 165,  80)
+                DF_GOLD_B = (255, 215,  60)
+                DF_STONE  = (30,  22,  14)
+
+                # Darken the whole door further
+                dark = pygame.Surface((w, h), pygame.SRCALPHA)
+                dark.fill((0, 0, 0, 80))
+                surface.blit(dark, (sx, sy))
+
+                # Gold chain lines (diagonal cross)
+                chain_col = (*DF_GOLD, int(180 + pulse * 60))
+                for seg in range(0, max(w, h), 12):
+                    # top-left to bottom-right
+                    cs = pygame.Surface((4, 4), pygame.SRCALPHA)
+                    cs.fill(chain_col)
+                    surface.blit(cs, (sx + seg % w, sy + seg % h))
+                chain_s = pygame.Surface((w, h), pygame.SRCALPHA)
+                pygame.draw.line(chain_s, (*DF_GOLD, 160), (0, 0), (w, h), 3)
+                pygame.draw.line(chain_s, (*DF_GOLD, 160), (w, 0), (0, h), 3)
+                # Small chain links along diagonals
+                for i in range(5):
+                    frac = (i + 1) / 6
+                    lx = int(frac * w); ly2 = int(frac * h)
+                    pygame.draw.circle(chain_s, (*DF_GOLD_B, 200), (lx, ly2), 4)
+                    pygame.draw.circle(chain_s, (*DF_GOLD_B, 200), (w - lx, ly2), 4)
+                surface.blit(chain_s, (sx, sy))
+
+                # Lock icon in centre
+                lk_w, lk_h = 24, 28
+                lk_x = cx2 - lk_w // 2
+                lk_y = cy2 - lk_h // 2 - 4
+                # Lock shackle (arc)
+                arc_rect = pygame.Rect(lk_x + 4, lk_y - 8, lk_w - 8, 20)
+                pygame.draw.arc(surface, DF_GOLD_B, arc_rect, 0, math.pi, 4)
+                # Lock body
+                pygame.draw.rect(surface, DF_STONE,  (lk_x, lk_y + 6,  lk_w, lk_h - 6), border_radius=4)
+                pygame.draw.rect(surface, DF_GOLD_B, (lk_x, lk_y + 6,  lk_w, lk_h - 6), 2, border_radius=4)
+                # Keyhole
+                pygame.draw.circle(surface, (0, 0, 0), (cx2, lk_y + 14), 4)
+                pygame.draw.rect(surface,   (0, 0, 0), (cx2 - 2, lk_y + 14, 4, 7))
+
+                # "BOSS" label below lock
+                try:
+                    lbl_f = pygame.font.SysFont("impact", 13)
+                except Exception:
+                    lbl_f = pygame.font.Font(None, 15)
+                lbl_pulse_a = int(160 + pulse * 95)
+                lbl_s = lbl_f.render("BOSS", True, DF_GOLD_B)
+                lbl_surf = pygame.Surface((lbl_s.get_width(), lbl_s.get_height()), pygame.SRCALPHA)
+                lbl_surf.blit(lbl_s, (0, 0))
+                lbl_surf.set_alpha(lbl_pulse_a)
+                surface.blit(lbl_surf, (cx2 - lbl_s.get_width() // 2, lk_y + lk_h + 2))
+
 
 
 
@@ -701,18 +757,26 @@ class Stage:
         dirs = ["N", "S", "E", "W"]
         random.shuffle(dirs)
         placed = []   # list of (dir, room_rect)
+        primary_spoke_rects = []   # track primary spoke room_rects for boss selection
         for d in dirs:
             r = branch(d, hub)
             if r:
                 placed.append((d, r))
+                primary_spoke_rects.append(r)  # direct child of hub → boss candidate
 
-        # ── 4) Secondary branches from each spoke room ─────────
+        # ── 3b) Pick boss spoke BEFORE branching so we can exclude it ──
+        # Boss room = largest primary spoke (connected only to hub, nothing branches from it)
+        boss_spoke_rect = max(primary_spoke_rects, key=lambda r: r.w * r.h) if primary_spoke_rects else None
+
+        # ── 4) Secondary branches — skip boss spoke as parent ──
         perp_map = {
             "N": ["E", "W"], "S": ["E", "W"],
             "E": ["N", "S"], "W": ["N", "S"],
         }
         secondary = []
         for par_d, par_r in placed:
+            if par_r is boss_spoke_rect:
+                continue   # boss room connects ONLY to hub — no children
             perps = perp_map[par_d][:]
             random.shuffle(perps)
             for pd in perps:
@@ -724,12 +788,13 @@ class Stage:
                     secondary.append((pd, r2))
                     break   # one secondary per spoke
 
-        # ── 5) Tertiary branches (stage ≥ 2) ───────────────────
+        # ── 5) Tertiary branches (stage ≥ 2) — also skip boss spoke ──
         if self.stage_id >= 2:
             all_placed = placed + secondary
             random.shuffle(all_placed)
             for par_d, par_r in all_placed[:2]:
-                # try same direction (extend chain) or perpendicular
+                if par_r is boss_spoke_rect:
+                    continue   # never extend from boss room
                 for td in [par_d] + perp_map[par_d]:
                     r3 = branch(td, par_r,
                                 corr_len=random.randint(4, 7),
@@ -745,8 +810,17 @@ class Stage:
                 if self.tilemap[ty][tx] == 0:
                     self.wall_rects.append(pygame.Rect(tx*TILE, ty*TILE, TILE, TILE))
 
-        self.rooms     = [Room(r) for r in room_rects]
-        self.boss_room = max(self.rooms, key=lambda r: r.rect.w * r.rect.h)
+        self.rooms = [Room(r) for r in room_rects]
+        # boss_room = spoke ที่เลือกไว้ก่อนแล้ว (ไม่มีห้องลูก)
+        primary_room_objs = [
+            rm for rm in self.rooms
+            if any(rm.rect == pr for pr in primary_spoke_rects)
+        ]
+        if boss_spoke_rect is not None:
+            boss_match = [rm for rm in primary_room_objs if rm.rect == boss_spoke_rect]
+            self.boss_room = boss_match[0] if boss_match else max(primary_room_objs or self.rooms[1:], key=lambda r: r.rect.w * r.rect.h)
+        else:
+            self.boss_room = max(primary_room_objs or self.rooms[1:], key=lambda r: r.rect.w * r.rect.h)
         self.boss_room.is_boss = True
 
         self._build_doors()
@@ -830,8 +904,7 @@ class Stage:
             if room.is_boss:
                 bx, by = room.cx, room.cy
                 enemies.append(make_enemy(self.boss_type, bx, by, stage_level))
-                for pt in room.get_spawn_points(3):
-                    enemies.append(make_enemy(random.choice(self.enemy_types), pt[0], pt[1], stage_level))
+                # ไม่ spawn mob เพิ่มในห้องบอส — บอสสู้คนเดียว
             elif room is elite_room and elite_type:
                 enemies.append(make_enemy(elite_type, room.cx, room.cy, stage_level))
                 for pt in room.get_spawn_points(max(1, count-1)):
@@ -979,23 +1052,25 @@ class Stage:
         for room in self.rooms:
             rx=int(room.rect.x*TILE*scale); ry=int(room.rect.y*TILE*scale)
             rw=max(4,int(room.rect.w*TILE*scale)); rh=max(4,int(room.rect.h*TILE*scale))
-            if room.is_boss:
+            boss_cleared = room.is_boss and room.cleared
+            if boss_cleared:
+                col=(20,140,50,240); bcol=(80,255,120,255)
+            elif room.is_boss:
                 col=(200,40,40,230); bcol=(255,80,80,255)
-            elif not room.visited:
-                col=(35,40,60,200); bcol=(60,70,110,255)
             elif room.cleared:
                 col=(30,100,50,220); bcol=(50,160,80,255)
-            elif room.has_fountain and not room.fountain_used:
-                col=(140,30,30,220); bcol=(220,60,60,255)
             else:
-                col=(60,80,120,220); bcol=(100,130,190,255)
+                col=(35,40,60,200); bcol=(60,70,110,255)
             pygame.draw.rect(mini_surf,col,(rx,ry,rw,rh),border_radius=2)
             pygame.draw.rect(mini_surf,bcol,(rx,ry,rw,rh),1,border_radius=2)
             cx_m=rx+rw//2; cy_m=ry+rh//2
-            if room.is_boss and rw>=6:
+            if boss_cleared and rw>=5:
+                # ✔ ใหญ่สีเขียวสว่าง พร้อม outline
+                pts=[(cx_m-3,cy_m+1),(cx_m-1,cy_m+3),(cx_m+4,cy_m-3)]
+                pygame.draw.lines(mini_surf,(0,80,20,255),False,pts,2)
+                pygame.draw.lines(mini_surf,(120,255,140,255),False,pts,1)
+            elif room.is_boss and rw>=6:
                 pygame.draw.circle(mini_surf,(255,60,60,255),(cx_m,cy_m),max(2,rw//4))
-            elif room.has_fountain and not room.fountain_used and rw>=5:
-                pygame.draw.circle(mini_surf,(255,80,80,255),(cx_m,cy_m),2)
             elif room.cleared and rw>=5:
                 pygame.draw.line(mini_surf,(80,255,120,255),(cx_m-2,cy_m),(cx_m,cy_m+2),1)
                 pygame.draw.line(mini_surf,(80,255,120,255),(cx_m,cy_m+2),(cx_m+3,cy_m-2),1)
@@ -1007,7 +1082,7 @@ class Stage:
         surface.blit(mini_surf,(mx,my))
         # Legend
         fnt=pygame.font.SysFont("Arial",9,bold=True)
-        legend=[((200,40,40),"BOSS"),((220,60,60),"Heal"),((30,100,50),"Clear"),((60,80,120),"Room")]
+        legend=[((200,40,40),"BOSS"),((30,100,50),"✔ Clear")]
         lx=mx; ly=my+size+3
         for col,label in legend:
             pygame.draw.rect(surface,col,(lx,ly,7,7),border_radius=1)

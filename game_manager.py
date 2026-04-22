@@ -64,6 +64,14 @@ class GameManager:
         self._last_enemy_pos = (640, 360)    # position of last enemy killed
         self.shake_timer     = 0.0           # screen-shake duration remaining
         self.shake_mag       = 0             # shake magnitude in pixels
+        self.boss_clear_timer = 0.0          # green overlay + checkmark duration
+
+        # ── Boss cinematic system ──────────────────────────────
+        self.boss_entity          = None     # reference to live BossEnemy
+        self.boss_spawn_timer     = 0.0      # spawn intro overlay (counts down)
+        self.boss_ready_timer     = 0.0      # "GET READY" freeze after cinematic
+        self.boss_death_timer     = 0.0      # death explosion overlay (counts down)
+        self.boss_death_particles = []       # explosion particles list
 
         # ── Sound ─────────────────────────────────────────────
         self.sfx = SoundManager()
@@ -77,6 +85,515 @@ class GameManager:
         self.over_screen  = GameOverScreen()
         self.shop_screen  = None
         self.player_name  = "Hero"
+
+    # ── Boss cinematic methods ────────────────────────────────
+
+    def _draw_boss_hpbar(self, surface):
+        """Cinematic boss HP bar — Dark Fantasy style matching main menu / pause."""
+        boss = self.boss_entity
+        if not boss or not boss.alive:
+            return
+        pct   = boss.hp / max(1, boss.max_hp)
+        phase = getattr(boss, "phase", 1)
+        t     = pygame.time.get_ticks() / 1000.0
+        pulse = math.sin(t * 3.2) * 0.5 + 0.5   # 0 → 1
+
+        # ── Dark Fantasy palette (matches ui.py) ─────────────
+        DF_BG      = (14,  10,   6)
+        DF_BG2     = (22,  16,  10)
+        DF_GOLD    = (200, 165,  80)
+        DF_GOLD_B  = (240, 205, 100)
+        DF_GOLD_D  = (110,  82,  30)
+        DF_BLOOD   = (160,  32,  32)
+        DF_BLOOD_B = (210,  55,  40)
+        DF_CRIMSON = (110,  18,  18)
+        DF_STONE   = (38,  30,  22)
+        DF_STONE2  = (55,  44,  30)
+        DF_BONE    = (210, 195, 165)
+        DF_SILVER  = (170, 162, 148)
+        DF_ORANGE  = (230, 110,  30)
+
+        bar_w  = 760
+        bar_h  = 22
+        bar_x  = (SCREEN_W - bar_w) // 2
+        bar_y  = SCREEN_H - HUD_H - bar_h - 18
+
+        panel_x = bar_x - 32
+        panel_y = bar_y - 36
+        panel_w = bar_w + 64
+        panel_h = bar_h + 58
+
+        # ── Phase-2 outer glow ────────────────────────────────
+        if phase == 2:
+            glow_a = int(40 + 35 * pulse)
+            for gw in (10, 6, 3):
+                gs = pygame.Surface((panel_w + gw*4, panel_h + gw*4), pygame.SRCALPHA)
+                pygame.draw.rect(gs, (DF_ORANGE[0], DF_ORANGE[1], DF_ORANGE[2], glow_a),
+                                 (0, 0, panel_w + gw*4, panel_h + gw*4), gw, border_radius=6)
+                surface.blit(gs, (panel_x - gw*2, panel_y - gw*2))
+
+        # ── Stone panel background ─────────────────────────────
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((*DF_BG, 220))
+        surface.blit(panel, (panel_x, panel_y))
+
+        # Stone texture strips (horizontal)
+        for iy in range(0, panel_h, 14):
+            st = pygame.Surface((panel_w, 1), pygame.SRCALPHA)
+            st.fill((*DF_STONE, 60))
+            surface.blit(st, (panel_x, panel_y + iy))
+
+        # Outer border — gold with corner rivets
+        border_col = DF_GOLD_B if phase == 2 else DF_GOLD
+        pygame.draw.rect(surface, border_col,
+                         (panel_x, panel_y, panel_w, panel_h), 2, border_radius=4)
+        # Blood inner border
+        pygame.draw.rect(surface, DF_BLOOD,
+                         (panel_x + 3, panel_y + 3, panel_w - 6, panel_h - 6), 1, border_radius=3)
+
+        # Corner rivets
+        for (rx2, ry2) in [(panel_x+6, panel_y+6), (panel_x+panel_w-6, panel_y+6),
+                           (panel_x+6, panel_y+panel_h-6), (panel_x+panel_w-6, panel_y+panel_h-6)]:
+            pygame.draw.circle(surface, DF_GOLD_D,  (rx2, ry2), 5)
+            pygame.draw.circle(surface, DF_GOLD,    (rx2, ry2), 5, 2)
+            pygame.draw.circle(surface, DF_GOLD_B,  (rx2-1, ry2-1), 2)
+
+        # ── Fonts (impact = dark fantasy feel) ───────────────
+        try:
+            nm_font  = pygame.font.SysFont("impact", 20)
+            hp_font  = pygame.font.SysFont("impact", 14)
+            ph_font  = pygame.font.SysFont("impact", 13)
+        except Exception:
+            nm_font  = pygame.font.Font(None, 22)
+            hp_font  = pygame.font.Font(None, 16)
+            ph_font  = pygame.font.Font(None, 15)
+
+        # ── Boss name ─────────────────────────────────────────
+        name_col = DF_GOLD_B if phase == 2 else DF_GOLD
+        # Shadow
+        nm_shd = nm_font.render(boss.enemy_type, True, (0, 0, 0))
+        surface.blit(nm_shd, (bar_x + 2, panel_y + 8 + 2))
+        nm_surf = nm_font.render(boss.enemy_type, True, name_col)
+        surface.blit(nm_surf, (bar_x, panel_y + 8))
+
+        # ── Phase label (right-aligned) ───────────────────────
+        if phase == 2:
+            flash_c = int(140 + 80 * abs(math.sin(t * 5)))
+            ph_col  = (255, flash_c, 20)
+            ph_str  = "⚡ PHASE 2 — ENRAGED ⚡"
+        else:
+            ph_col  = DF_SILVER
+            ph_str  = "[ PHASE 1 ]"
+        ph_surf = ph_font.render(ph_str, True, ph_col)
+        surface.blit(ph_surf, (bar_x + bar_w - ph_surf.get_width(), panel_y + 10))
+
+        # ── Rune divider line under name row ─────────────────
+        div_y = panel_y + 30
+        pygame.draw.line(surface, DF_GOLD_D, (bar_x, div_y), (bar_x + bar_w, div_y), 1)
+        # Diamond accent
+        cx3 = bar_x + bar_w // 2
+        pts_d = [(cx3, div_y - 4), (cx3 + 5, div_y), (cx3, div_y + 4), (cx3 - 5, div_y)]
+        pygame.draw.polygon(surface, DF_GOLD, pts_d)
+
+        # ── HP bar track ──────────────────────────────────────
+        pygame.draw.rect(surface, DF_CRIMSON,
+                         (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2), border_radius=4)
+        pygame.draw.rect(surface, (12, 4, 4),
+                         (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+
+        # ── HP fill — gradient ────────────────────────────────
+        fill_w = max(0, int(bar_w * pct))
+        if fill_w > 0:
+            if pct > 0.60:
+                base_col = DF_BLOOD_B if phase == 1 else DF_ORANGE
+            elif pct > 0.30:
+                base_col = (200, 40, 20) if phase == 1 else (240, 90, 10)
+            else:
+                fl = abs(math.sin(t * 8))
+                base_col = (255, int(15 + 45 * fl), 0)
+
+            if phase == 2:
+                base_col = tuple(min(255, c + 40) for c in base_col)
+
+            # Draw gradient fill (left darker, right brighter)
+            for px2 in range(fill_w):
+                frac = px2 / max(1, fill_w)
+                r = min(255, int(base_col[0] * (0.7 + 0.3 * frac)))
+                g = min(255, int(base_col[1] * (0.5 + 0.5 * frac)))
+                b = int(base_col[2])
+                pygame.draw.line(surface, (r, g, b), (bar_x + px2, bar_y), (bar_x + px2, bar_y + bar_h))
+
+            # Shine strip on top
+            shine_surf = pygame.Surface((fill_w, bar_h // 3), pygame.SRCALPHA)
+            shine_surf.fill((*DF_GOLD_B, 35))
+            surface.blit(shine_surf, (bar_x, bar_y))
+
+            # Phase-2 pulsing glow overlay
+            if phase == 2:
+                g_a = int(40 + 35 * pulse)
+                gsurf2 = pygame.Surface((fill_w, bar_h), pygame.SRCALPHA)
+                gsurf2.fill((*base_col, g_a))
+                surface.blit(gsurf2, (bar_x, bar_y))
+
+        # ── Segment markers at 25 / 50 / 75% ─────────────────
+        for seg in (0.25, 0.50, 0.75):
+            mx = bar_x + int(bar_w * seg)
+            pygame.draw.line(surface, DF_GOLD_D, (mx, bar_y), (mx, bar_y + bar_h), 2)
+            # Small diamond tick
+            pts_s = [(mx, bar_y - 4), (mx + 3, bar_y), (mx, bar_y + 4), (mx - 3, bar_y)]
+            pygame.draw.polygon(surface, DF_GOLD_D, pts_s)
+
+        # ── HP text ───────────────────────────────────────────
+        hp_txt  = f"{max(0, boss.hp):,}  /  {boss.max_hp:,}"
+        hp_shd  = hp_font.render(hp_txt, True, (0, 0, 0))
+        hp_surf = hp_font.render(hp_txt, True, DF_BONE)
+        hx = bar_x + bar_w // 2 - hp_surf.get_width() // 2
+        hy = bar_y + bar_h // 2 - hp_surf.get_height() // 2
+        surface.blit(hp_shd, (hx + 1, hy + 1))
+        surface.blit(hp_surf, (hx, hy))
+
+        # ── Outer bar border ──────────────────────────────────
+        brd = DF_GOLD_B if phase == 2 else DF_GOLD
+        pygame.draw.rect(surface, brd,
+                         (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2), 2, border_radius=4)
+
+    def _draw_boss_spawn_cinematic(self, surface):
+        """3-second cinematic intro when boss room is entered — dark fantasy theme."""
+        import math as _math
+        t = self.boss_spawn_timer       # counts DOWN 3.0 → 0
+        if t <= 0 or not self.boss_entity:
+            return
+
+        # ── Palette (dark fantasy — matches main menu / pause) ─
+        DF_BG      = (10,  6,  2)
+        DF_GOLD    = (212, 175, 55)
+        DF_GOLD2   = (255, 215, 80)
+        DF_BLOOD   = (140, 20, 20)
+        DF_BLOOD2  = (200, 40, 10)
+        DF_STONE   = (42,  34, 28)
+        DF_STONE2  = (62,  50, 40)
+        DF_SILVER  = (180, 170, 160)
+
+        cx = SCREEN_W // 2
+        cy = SCREEN_H // 2
+
+        # ── Slide / ease progress ─────────────────────────────
+        slide_frac = max(0.0, min(1.0, (3.0 - t) / 1.0))
+        ease       = 1.0 - (1.0 - slide_frac) ** 3
+        hp_ease    = max(0.0, min(1.0, (3.0 - t - 0.6) / 0.8))   # HP bar appears later
+
+        # ── Full-screen vignette overlay ──────────────────────
+        vig_alpha = int(min(210, 210 * min(1.0, t / 2.2)))
+        vig = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        vig.fill((0, 0, 0, vig_alpha))
+        surface.blit(vig, (0, 0))
+
+        # ── Horizontal scan-lines (eerie) ─────────────────────
+        if t > 0.8:
+            scan_alpha = int(min(60, 60 * (t - 0.8) / 0.8))
+            for iy in range(0, SCREEN_H, 10):
+                s = pygame.Surface((SCREEN_W, 1), pygame.SRCALPHA)
+                s.fill((180, 10, 0, scan_alpha))
+                surface.blit(s, (0, iy))
+
+        # ── Top + bottom gold/blood cinematic bars ────────────
+        bar_h = 36
+        bar_alpha = int(min(240, ease * 255))
+        for by, col in [(0, DF_BLOOD), (SCREEN_H - bar_h, DF_BLOOD)]:
+            bs = pygame.Surface((SCREEN_W, bar_h), pygame.SRCALPHA)
+            bs.fill((*col, bar_alpha))
+            surface.blit(bs, (0, by))
+        # Gold trim lines on bars
+        if ease > 0.1:
+            trim_a = int(min(255, ease * 255))
+            for by in [bar_h, SCREEN_H - bar_h - 1]:
+                ts = pygame.Surface((SCREEN_W, 2), pygame.SRCALPHA)
+                ts.fill((*DF_GOLD, trim_a))
+                surface.blit(ts, (0, by))
+
+        # ── Fonts ─────────────────────────────────────────────
+        try:
+            title_font = pygame.font.SysFont("impact", 62)
+            sub_font   = pygame.font.SysFont("impact", 24)
+            phase_font = pygame.font.SysFont("impact", 20)
+            hp_font    = pygame.font.SysFont("impact", 18)
+        except Exception:
+            title_font = pygame.font.Font(None, 72)
+            sub_font   = pygame.font.Font(None, 28)
+            phase_font = pygame.font.Font(None, 24)
+            hp_font    = pygame.font.Font(None, 22)
+
+        # ── Boss name slide in from top ───────────────────────
+        base_y  = cy - 52
+        slide_y = int(-100 + (base_y + 100) * ease)
+
+        boss_name = self.boss_entity.enemy_type
+        phase_num = getattr(self.boss_entity, "phase", 1)
+
+        # Shadow layer
+        shd = title_font.render(boss_name, True, (0, 0, 0))
+        shd.set_alpha(int(ease * 200))
+        surface.blit(shd, (cx - shd.get_width() // 2 + 3, slide_y + 3))
+        # Gold gradient: inner lighter gold
+        nm_col = (int(212 + 43 * ease), int(175 + 40 * ease), int(55 * (1 - ease * 0.3)))
+        nm = title_font.render(boss_name, True, nm_col)
+        nm.set_alpha(int(ease * 255))
+        surface.blit(nm, (cx - nm.get_width() // 2, slide_y))
+
+        # ── "— B O S S —" header ──────────────────────────────
+        if ease > 0.3:
+            hdr_a = int(min(255, (ease - 0.3) / 0.7 * 255))
+            hdr = sub_font.render("—  B O S S  —", True, DF_BLOOD2)
+            hdr.set_alpha(hdr_a)
+            surface.blit(hdr, (cx - hdr.get_width() // 2, slide_y - 40))
+
+        # ── Decorative horizontal rule under name ─────────────
+        if ease > 0.5:
+            rule_a = int(min(255, (ease - 0.5) / 0.5 * 255))
+            rule_w = int(min(420, nm.get_width() + 80) * ease)
+            rule_surf = pygame.Surface((rule_w, 2), pygame.SRCALPHA)
+            rule_surf.fill((*DF_GOLD, rule_a))
+            surface.blit(rule_surf, (cx - rule_w // 2, slide_y + nm.get_height() + 4))
+
+        # ── Phase label ───────────────────────────────────────
+        if ease > 0.55:
+            ph_a = int(min(255, (ease - 0.55) / 0.45 * 255))
+            phase_label = f"[ PHASE {phase_num} ]"
+            ph_col = (220, 150, 60) if phase_num >= 2 else DF_SILVER
+            ph = phase_font.render(phase_label, True, ph_col)
+            ph.set_alpha(ph_a)
+            surface.blit(ph, (cx - ph.get_width() // 2, slide_y + nm.get_height() + 14))
+
+        # ── Corner rune accents ───────────────────────────────
+        if ease > 0.4:
+            rune_a   = int(min(180, (ease - 0.4) / 0.6 * 180))
+            rune_sz  = 18
+            rune_col = (*DF_GOLD, rune_a)
+            margin   = 12
+            for rx, ry, dx, dy in [
+                (margin, bar_h + margin, 1, 1),
+                (SCREEN_W - margin, bar_h + margin, -1, 1),
+                (margin, SCREEN_H - bar_h - margin, 1, -1),
+                (SCREEN_W - margin, SCREEN_H - bar_h - margin, -1, -1),
+            ]:
+                rs = pygame.Surface((rune_sz * 2, rune_sz * 2), pygame.SRCALPHA)
+                pygame.draw.line(rs, rune_col,
+                    (rune_sz, rune_sz), (rune_sz + dx * rune_sz, rune_sz), 2)
+                pygame.draw.line(rs, rune_col,
+                    (rune_sz, rune_sz), (rune_sz, rune_sz + dy * rune_sz), 2)
+                surface.blit(rs, (rx - rune_sz, ry - rune_sz))
+
+        # ── Boss HP Bar panel (dark fantasy styled) ───────────
+        if hp_ease > 0:
+            bw   = 560
+            bh_p = 36   # panel height
+            bx   = cx - bw // 2
+            # Slide up from below
+            by_base = cy + 90
+            by      = int(by_base + 40 * (1.0 - hp_ease))
+
+            # Stone panel background
+            panel = pygame.Surface((bw, bh_p + 32), pygame.SRCALPHA)
+            panel_alpha = int(hp_ease * 230)
+
+            # Outer glow for phase 2
+            if phase_num >= 2:
+                pulse = 0.5 + 0.5 * _math.sin(t * 6)
+                glow_a = int(hp_ease * 80 * pulse)
+                glow = pygame.Surface((bw + 20, bh_p + 52), pygame.SRCALPHA)
+                glow.fill((220, 100, 20, glow_a))
+                surface.blit(glow, (bx - 10, by - 10))
+
+            # Panel fill (stone dark)
+            panel.fill((*DF_STONE, panel_alpha))
+            surface.blit(panel, (bx, by))
+
+            # Gold border (outer)
+            border_a = int(hp_ease * 255)
+            pygame.draw.rect(surface, (*DF_GOLD, border_a),
+                             (bx - 1, by - 1, bw + 2, bh_p + 34), 2,
+                             border_radius=3)
+            # Blood inner border
+            pygame.draw.rect(surface, (*DF_BLOOD, border_a),
+                             (bx + 2, by + 2, bw - 4, bh_p + 28), 1,
+                             border_radius=2)
+
+            # Boss name label row
+            boss_hp   = getattr(self.boss_entity, "hp",     1)
+            boss_maxhp = getattr(self.boss_entity, "max_hp", boss_hp) or 1
+            hp_ratio  = max(0.0, min(1.0, boss_hp / boss_maxhp))
+
+            lbl = hp_font.render(boss_name, True, DF_GOLD2)
+            lbl.set_alpha(border_a)
+            surface.blit(lbl, (bx + 10, by + 5))
+
+            ph_tag_str = f"  [ PHASE {phase_num} ]"
+            ph_tag_col = (220, 120, 40) if phase_num >= 2 else DF_SILVER
+            ph_tag = hp_font.render(ph_tag_str, True, ph_tag_col)
+            ph_tag.set_alpha(border_a)
+            surface.blit(ph_tag, (bx + 10 + lbl.get_width(), by + 5))
+
+            # HP numbers right-aligned
+            hp_txt = hp_font.render(f"{boss_hp} / {boss_maxhp}", True, DF_SILVER)
+            hp_txt.set_alpha(border_a)
+            surface.blit(hp_txt, (bx + bw - hp_txt.get_width() - 10, by + 5))
+
+            # HP bar track
+            bar_y    = by + 26
+            bar_x    = bx + 8
+            bar_fill_w = bw - 16
+            bar_fh   = 16
+
+            # Track bg
+            track = pygame.Surface((bar_fill_w, bar_fh), pygame.SRCALPHA)
+            track.fill((20, 10, 10, int(hp_ease * 220)))
+            surface.blit(track, (bar_x, bar_y))
+
+            # Fill gradient (blood red → dark orange near 0)
+            filled_w = int(bar_fill_w * hp_ratio * hp_ease)
+            if filled_w > 0:
+                for px in range(filled_w):
+                    frac   = px / max(1, bar_fill_w)
+                    # color: deep crimson left, brighter red right
+                    r = int(160 + 80 * frac)
+                    g = int(20  + 20 * (1 - frac))
+                    b = 10
+                    fill_col = (r, g, b, int(hp_ease * 220))
+                    fs = pygame.Surface((1, bar_fh), pygame.SRCALPHA)
+                    fs.fill(fill_col)
+                    surface.blit(fs, (bar_x + px, bar_y))
+
+            # Segment markers at 25/50/75%
+            for seg in [0.25, 0.5, 0.75]:
+                mx = bar_x + int(bar_fill_w * seg)
+                ms = pygame.Surface((2, bar_fh), pygame.SRCALPHA)
+                ms.fill((0, 0, 0, int(hp_ease * 160)))
+                surface.blit(ms, (mx, bar_y))
+
+            # Bar border
+            pygame.draw.rect(surface, (*DF_GOLD, int(hp_ease * 180)),
+                             (bar_x - 1, bar_y - 1, bar_fill_w + 2, bar_fh + 2), 1)
+
+    def _draw_boss_ready_overlay(self, surface):
+        """1.5-second 'GET READY!' freeze overlay after boss cinematic ends."""
+        import math as _math
+        t  = self.boss_ready_timer   # counts DOWN 1.5 → 0
+        if t <= 0:
+            return
+        total = 1.5
+        prog  = 1.0 - t / total      # 0 → 1 over the 1.5 s
+
+        DF_GOLD   = (212, 175, 55)
+        DF_GOLD2  = (255, 225, 100)
+        DF_BLOOD  = (140, 20, 20)
+        cx = SCREEN_W // 2
+        cy = SCREEN_H // 2
+
+        # ── Dark overlay ──────────────────────────────────────
+        ov_alpha = int(min(160, 160 * min(1.0, prog / 0.2)))
+        ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, ov_alpha))
+        surface.blit(ov, (0, 0))
+
+        # ── Gold/blood cinematic bars ─────────────────────────
+        bar_h   = 36
+        bar_alpha = int(min(240, prog / 0.15 * 240))
+        for by, col in [(0, DF_BLOOD), (SCREEN_H - bar_h, DF_BLOOD)]:
+            bs = pygame.Surface((SCREEN_W, bar_h), pygame.SRCALPHA)
+            bs.fill((*col, bar_alpha))
+            surface.blit(bs, (0, by))
+        # Gold trim
+        for by in [bar_h, SCREEN_H - bar_h - 1]:
+            ts = pygame.Surface((SCREEN_W, 2), pygame.SRCALPHA)
+            ts.fill((*DF_GOLD, bar_alpha))
+            surface.blit(ts, (0, by))
+
+        # ── "GET READY!" text ─────────────────────────────────
+        try:
+            big_font = pygame.font.SysFont("impact", 72)
+            sub_font = pygame.font.SysFont("impact", 22)
+        except Exception:
+            big_font = pygame.font.Font(None, 82)
+            sub_font = pygame.font.Font(None, 26)
+
+        # Pulse scale effect on text
+        pulse  = 1.0 + 0.04 * _math.sin(prog * _math.pi * 6)
+        fade_a = int(min(255, prog / 0.25 * 255))
+
+        # Shadow
+        shd = big_font.render("GET READY!", True, (0, 0, 0))
+        shd.set_alpha(int(fade_a * 0.6))
+        surface.blit(shd, (cx - shd.get_width() // 2 + 4, cy - 36 + 4))
+        # Gold main text
+        grt = big_font.render("GET READY!", True, DF_GOLD2)
+        grt.set_alpha(fade_a)
+        surface.blit(grt, (cx - grt.get_width() // 2, cy - 36))
+
+        # ── Countdown sub-text ────────────────────────────────
+        if prog > 0.2:
+            sub_a   = int(min(200, (prog - 0.2) / 0.2 * 200))
+            seconds = max(0.0, t)
+            sub_str = f"Battle begins in  {seconds:.1f}s"
+            sub     = sub_font.render(sub_str, True, (200, 190, 160))
+            sub.set_alpha(sub_a)
+            surface.blit(sub, (cx - sub.get_width() // 2, cy + 28))
+
+        # ── Decorative rule ───────────────────────────────────
+        if prog > 0.3:
+            rule_a = int(min(200, (prog - 0.3) / 0.3 * 200))
+            rule_w = int(min(360, 360 * (prog - 0.3) / 0.4))
+            for ry in [cy - 46, cy + 22]:
+                rs = pygame.Surface((rule_w, 2), pygame.SRCALPHA)
+                rs.fill((*DF_GOLD, rule_a))
+                surface.blit(rs, (cx - rule_w // 2, ry))
+
+    def _draw_boss_death_overlay(self, surface):
+        """'BOSS DEFEATED!' flash overlay (first 2 s of death timer)."""
+        t = self.boss_death_timer       # counts DOWN 3.2 → 0
+        if t <= 0 or t > 2.8:
+            return
+        # Show text from t=2.8 down to 0 with fade
+        alpha = int(255 * min(1.0, t / 0.6))     # fade out in last 0.6 s
+        try:
+            big_font = pygame.font.SysFont("Arial", 58, bold=True)
+            sub_font = pygame.font.SysFont("Arial", 24, bold=True)
+        except Exception:
+            big_font = pygame.font.Font(None, 66)
+            sub_font = pygame.font.Font(None, 28)
+
+        # Golden flash tint
+        flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        flash.fill((255, 200, 40, int(alpha * 0.25)))
+        surface.blit(flash, (0, 0))
+
+        txt   = "BOSS DEFEATED!"
+        shd   = big_font.render(txt, True, (0, 0, 0))
+        shd.set_alpha(alpha)
+        main  = big_font.render(txt, True, (255, 230, 50))
+        main.set_alpha(alpha)
+        cx    = SCREEN_W // 2
+        cy    = SCREEN_H // 2 - 30
+        surface.blit(shd, (cx - shd.get_width() // 2 + 4, cy + 4))
+        surface.blit(main, (cx - main.get_width() // 2, cy))
+
+        sub   = sub_font.render("— stage cleared —", True, (200, 200, 255))
+        sub.set_alpha(alpha)
+        surface.blit(sub, (cx - sub.get_width() // 2, cy + 64))
+
+    def _draw_boss_death_particles(self, surface):
+        """Draw world-space explosion particles for boss death."""
+        cam_x = self.stage.cam_x
+        cam_y = self.stage.cam_y
+        for _p in self.boss_death_particles:
+            life_frac = _p["life"] / _p["max_life"]
+            alpha     = int(255 * life_frac)
+            sz        = max(2, int(_p["size"] * life_frac))
+            sx        = int(_p["x"] - cam_x)
+            sy        = int(_p["y"] - cam_y)
+            if -sz <= sx <= SCREEN_W + sz and -sz <= sy <= SCREEN_H + sz:
+                ps = pygame.Surface((sz * 2 + 2, sz * 2 + 2), pygame.SRCALPHA)
+                pygame.draw.circle(ps, (*_p["color"], alpha), (sz + 1, sz + 1), sz)
+                surface.blit(ps, (sx - sz - 1, sy - sz - 1))
 
     # ── Main loop ────────────────────────────────────────────
     def run(self):
@@ -489,6 +1006,42 @@ class GameManager:
         # Assign each enemy a home_room so they stay in their own room
         for e in self.enemies:
             e.home_room = self.stage.get_room_at(e.x, e.y)
+        # ── Detect boss for this stage ────────────────────────
+        from enemy import BossEnemy as _BE
+        self.boss_entity      = None
+        self.boss_spawn_timer = 0.0
+        self.boss_ready_timer = 0.0
+        self.boss_death_timer = 0.0
+        self.boss_death_particles = []
+        for e in self.enemies:
+            if isinstance(e, _BE):
+                self.boss_entity = e
+                break
+        # ── Fallback: ถ้าหาบอสไม่เจอ (เช่น boss_room ไม่ถูก assign) ให้ force-spawn ──
+        if self.boss_entity is None:
+            from constants import STAGE_CONFIGS
+            from enemy import make_enemy
+            cfg = STAGE_CONFIGS[idx] if idx < len(STAGE_CONFIGS) else STAGE_CONFIGS[-1]
+            boss_type = cfg.get("boss", "Elder Treant")
+            boss_room = self.stage.boss_room
+            if boss_room is None:
+                # เลือกห้องที่ใหญ่สุด — แต่ห้ามเป็น rooms[0] (spawn room)
+                non_start = self.stage.rooms[1:]
+                candidates = non_start if non_start else self.stage.rooms
+                boss_room = max(candidates, key=lambda r: r.rect.w * r.rect.h)
+                boss_room.is_boss = True
+                self.stage.boss_room = boss_room
+            new_boss = make_enemy(boss_type, float(boss_room.cx), float(boss_room.cy), idx + 1)
+            new_boss.home_room = boss_room
+            self.enemies.append(new_boss)
+            self.boss_entity = new_boss
+
+        # ── Lock boss room door until all other rooms are cleared ─
+        # IMPORTANT: call close_room_doors() FIRST (while doors_open=True) so
+        # door_rects get added to wall_rects for solid collision. Then set locked.
+        if self.stage.boss_room:
+            self.stage.close_room_doors(self.stage.boss_room)
+            self.stage.boss_room.door_locked = True
 
     def _push_enemies_from_doors(self, room):
         """Before closing doors: nudge any enemy on a door tile toward room centre."""
@@ -583,6 +1136,20 @@ class GameManager:
         if self.state != STATE_PLAYING:
             return
 
+        # ── Boss cinematic freeze ──────────────────────────────
+        # During boss_spawn_timer: full freeze (cinematic playing)
+        # During boss_ready_timer: freeze + "GET READY!" overlay
+        if self.boss_spawn_timer > 0:
+            self.sfx.update(dt)
+            self.boss_spawn_timer = max(0.0, self.boss_spawn_timer - dt)
+            if self.boss_spawn_timer <= 0:
+                self.boss_ready_timer = 1.5   # start "GET READY" freeze
+            return
+        if self.boss_ready_timer > 0:
+            self.sfx.update(dt)
+            self.boss_ready_timer = max(0.0, self.boss_ready_timer - dt)
+            return
+
         p     = self.player
         walls = self.stage.wall_rects
         cam_x = self.stage.cam_x
@@ -603,6 +1170,7 @@ class GameManager:
         # ── Room door / fountain management ───────────────────
         cur_room = self.stage.get_room_at(p.x, p.y)
         if cur_room:
+            cur_room.visited = True   # mark visited as soon as player steps in
             alive_in_room = cur_room.enemies_alive_in(self.enemies)
             if alive_in_room:
                 # FIX 1: don't close if player is still standing in the doorway
@@ -631,10 +1199,41 @@ class GameManager:
                             hr = getattr(e, "home_room", None)
                             if hr is cur_room:
                                 e.activated = True
+                                # ── Boss spawn cinematic ───────────────
+                                from enemy import BossEnemy as _BE
+                                if isinstance(e, _BE):
+                                    self.boss_spawn_timer = 3.0
             else:
                 if not cur_room.doors_open:
                     self.stage.open_room_doors(cur_room)
                 cur_room.cleared = True
+
+        # ── Boss room: unlock when all other rooms are cleared ───
+        boss_room = self.stage.boss_room
+        if boss_room and getattr(boss_room, 'door_locked', False):
+            non_boss = [r for r in self.stage.rooms if not r.is_boss]
+            if all(r.cleared for r in non_boss):
+                boss_room.door_locked = False
+                self.stage.open_room_doors(boss_room)   # removes door_rects from wall_rects
+                self._add_fx(boss_room.cx, boss_room.cy - 80,
+                             "⚔ BOSS ROOM UNLOCKED! ⚔", (255, 200, 50), 26)
+                self.sfx.play("portal_open")
+            else:
+                # แสดง warning เมื่อเข้าใกล้ประตู boss room ที่ยัง locked
+                if boss_room.door_rects:
+                    for dr in boss_room.door_rects:
+                        if math.hypot(p.x - dr.centerx, p.y - dr.centery) < 80:
+                            remaining = sum(1 for r in non_boss if not r.cleared)
+                            if not getattr(self, '_boss_lock_warn_cd', 0) > 0:
+                                self._add_fx(p.x, p.y - 54,
+                                             f"Clear {remaining} more room(s) first!",
+                                             (255, 180, 40), 18)
+                                self._boss_lock_warn_cd = 2.0
+                            break
+
+        # ── Tick boss lock warning cooldown ──────────────────────
+        if getattr(self, '_boss_lock_warn_cd', 0) > 0:
+            self._boss_lock_warn_cd = max(0.0, self._boss_lock_warn_cd - dt)
 
         # ── ห้องใครห้องมัน: keep enemies inside their home room ──
         from constants import TILE as _TILE
@@ -918,6 +1517,34 @@ class GameManager:
                 from enemy import BossEnemy as _BE
                 if isinstance(e, _BE):
                     self.sfx.play("boss_die")
+                    # ✅ mark boss room cleared → minimap turns green + ✔
+                    if hasattr(self.stage, "boss_room"):
+                        self.stage.boss_room.cleared = True
+                    # ── Boss death cinematic ───────────────────────
+                    self.boss_death_timer = 3.2
+                    self.boss_entity      = None
+                    # Spawn explosion particles in world-space
+                    import math as _m
+                    for _i in range(60):
+                        _ang = _m.tau * _i / 60 + random.uniform(-0.12, 0.12)
+                        _spd = random.uniform(70, 300)
+                        _col = random.choice([
+                            (255, 80, 0), (255, 210, 0), (255, 40, 40),
+                            (255, 160, 60), (220, 220, 255),
+                        ])
+                        _life = random.uniform(0.5, 2.5)
+                        self.boss_death_particles.append({
+                            "x": e.x, "y": e.y,
+                            "dx": _m.cos(_ang) * _spd,
+                            "dy": _m.sin(_ang) * _spd,
+                            "color": _col,
+                            "size": random.randint(4, 16),
+                            "life": _life,
+                            "max_life": _life,
+                        })
+                    # Big screen shake
+                    self.shake_timer = 1.0
+                    self.shake_mag   = 18
                 else:
                     self.sfx.play("enemy_die")
                 self.enemies.remove(e)
@@ -944,6 +1571,22 @@ class GameManager:
         # ── Screen-shake tick ─────────────────────────────────
         if self.shake_timer > 0:
             self.shake_timer = max(0.0, self.shake_timer - dt)
+
+        # ── Boss cinematic ticks ───────────────────────────────
+        if self.boss_death_timer > 0:
+            self.boss_death_timer = max(0.0, self.boss_death_timer - dt)
+            # Move particles in world space
+            for _p in self.boss_death_particles:
+                _p["x"]   += _p["dx"] * dt
+                _p["y"]   += _p["dy"] * dt
+                _p["life"] -= dt
+            self.boss_death_particles = [
+                _p for _p in self.boss_death_particles if _p["life"] > 0
+            ]
+
+        # ── Boss clear overlay tick ────────────────────────────
+        if self.boss_clear_timer > 0:
+            self.boss_clear_timer = max(0.0, self.boss_clear_timer - dt)
 
         # ── Fire-rate boost tick ───────────────────────────────
         if hasattr(p, '_fire_boost_timer') and p._fire_boost_timer > 0:
@@ -1023,6 +1666,23 @@ class GameManager:
             self._hud_pause_btn = draw_hud(self.screen, self.player, self.stage,
                      self.stage_idx, len(STAGE_CONFIGS), self.run_time)
             self.stage.draw_minimap(self.screen, self.player.x, self.player.y)
+
+            # ── Boss UI & cinematics (drawn on top of HUD) ─────
+            # HP bar แสดงเฉพาะหลังจากเข้าห้องบอสแล้วเท่านั้น (boss.activated = True)
+            # ซ่อนระหว่าง spawn cinematic และ ready overlay เพื่อไม่ให้ซ้อนกัน
+            in_boss_cinematic = self.boss_spawn_timer > 0 or self.boss_ready_timer > 0
+            if (self.boss_entity and self.boss_entity.alive
+                    and getattr(self.boss_entity, 'activated', False)
+                    and not in_boss_cinematic):
+                self._draw_boss_hpbar(self.screen)
+            if self.boss_death_particles:
+                self._draw_boss_death_particles(self.screen)
+            if self.boss_death_timer > 0:
+                self._draw_boss_death_overlay(self.screen)
+            if self.boss_spawn_timer > 0:
+                self._draw_boss_spawn_cinematic(self.screen)
+            if self.boss_ready_timer > 0:
+                self._draw_boss_ready_overlay(self.screen)
 
         elif self.state == STATE_INVENTORY:
             # Draw game behind inventory
