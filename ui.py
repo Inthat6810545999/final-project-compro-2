@@ -667,7 +667,7 @@ class ClassSelectScreen:
         draw_text(surface, "Any Weapon  ·  Balanced",
                   cx+cw//2, cy+ch-50, 11, TEXT_DIM, center=True)
         spd_int = min(5, max(1, int(cfg["speed"])))
-        pips = "".join("◆" if i<spd_int else "◇" for i in range(5))
+        pips = "".join("*" if i<spd_int else "-" for i in range(5))
         draw_text(surface, f"SPD  {pips}",
                   cx+cw//2, cy+ch-28, 11, DF_FROST, center=True)
 
@@ -882,7 +882,7 @@ class InventoryScreen:
 
         if len(player.inventory) > VISIBLE:
             draw_text(surface,
-                      f"Scroll ↑↓  ({self.scroll+1}–{min(self.scroll+VISIBLE,len(player.inventory))} / {len(player.inventory)})",
+                      f"Scroll (+/-)  ({self.scroll+1}–{min(self.scroll+VISIBLE,len(player.inventory))} / {len(player.inventory)})",
                       ox+14, oy+H-26, 10, TEXT_DIM)
 
         pygame.draw.line(surface, BORDER_GOLD, (ox+LEFT_W,oy+46),(ox+LEFT_W,oy+H-16),1)
@@ -1126,7 +1126,7 @@ class ShopScreen:
 
         self.btn_leave = draw_button(
             surface, ox+W//2-104, oy+H-48, 208, 38,
-            "CONTINUE  →",
+            "CONTINUE  >",
             pygame.Rect(ox+W//2-104,oy+H-48,208,38).collidepoint(mouse_pos),
             DF_FROST_DIM, 16)
 

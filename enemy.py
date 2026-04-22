@@ -431,7 +431,7 @@ class BossEnemy(RangedEnemy):
                 pf_font = pygame.font.SysFont("Arial", 46, bold=True)
             except Exception:
                 pf_font = pygame.font.Font(None, 54)
-            pf_surf = pf_font.render("⚡ PHASE 2 ⚡", True, (255, 240, 60))
+            pf_surf = pf_font.render("[ PHASE 2 ]", True, (255, 240, 60))
             surface.blit(pf_surf, (sx - pf_surf.get_width() // 2,
                                    sy - self.size * 4 - 60))
 

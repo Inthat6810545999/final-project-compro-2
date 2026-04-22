@@ -180,7 +180,7 @@ class GameManager:
         if phase == 2:
             flash_c = int(140 + 80 * abs(math.sin(t * 5)))
             ph_col  = (255, flash_c, 20)
-            ph_str  = "⚡ PHASE 2 — ENRAGED ⚡"
+            ph_str  = "[ PHASE 2 - ENRAGED ]"
         else:
             ph_col  = DF_SILVER
             ph_str  = "[ PHASE 1 ]"
@@ -767,7 +767,7 @@ class GameManager:
                 a2 = math.tau / 8 * i
                 fx_x = p.x + math.cos(a2) * 40
                 fx_y = p.y + math.sin(a2) * 40
-                self._add_fx(fx_x, fx_y, "★", (255, 240, 80), 18)
+                self._add_fx(fx_x, fx_y, "+EXP", (255, 240, 80), 14)
             self._add_fx(p.x, p.y - 40, "STAR SHOT!", col, 22)
 
         # ── RAPID FIRE (FRENZY) ───────────────────────────────────
@@ -780,7 +780,7 @@ class GameManager:
                 a3 = math.tau / 10 * i
                 fx_x = p.x + math.cos(a3) * 48
                 fx_y = p.y + math.sin(a3) * 48
-                self._add_fx(fx_x, fx_y, "⚡", col, 19)
+                self._add_fx(fx_x, fx_y, "!", col, 19)
             self._add_fx(p.x, p.y - 42, "FRENZY! 3s", col, 24)
 
     def _handle_skill(self, skill):
@@ -1270,7 +1270,7 @@ class GameManager:
                 boss_room.door_locked = False
                 self.stage.open_room_doors(boss_room)
                 self._add_fx(boss_room.cx, boss_room.cy - 80,
-                             "⚔ BOSS ROOM UNLOCKED! ⚔", (255, 200, 50), 26)
+                             "BOSS ROOM UNLOCKED!", (255, 200, 50), 26)
                 self.sfx.play("portal_open")
                 # Cinematic camera pan — 6-second dramatic sweep
                 self.cam_pan_timer      = 6.0
@@ -1690,147 +1690,294 @@ class GameManager:
 
     # ── Render ───────────────────────────────────────────────
     def _draw_boss_unlock_fx(self, surface):
-        """Cinematic boss-door unlock overlay: letterbox + vignette + pulsing banner."""
+        """
+        Dark-fantasy boss-door unlock cinematic — matches main menu / pause palette.
+
+        Timeline (PAN_DUR = 6 s, counts DOWN):
+          6.0 → 4.5  SLIDE_IN  : camera sweeps to boss door
+                                  banner = 'THE DOOR IS OPENING...'
+                                  (real door tiles visible in background, split-open anim)
+          4.5 → 1.5  HOLD      : camera rests at boss door
+                                  banner = 'ALL ROOMS CLEARED'
+          1.5 → 0    SLIDE_BACK: camera returns to player
+                                  banner = 'GET READY FOR BATTLE'
+
+        NOTE FOR FUTURE PROMPTS
+        -----------------------
+        • All rendered strings use ASCII only — no Unicode emoji/symbols
+          (⚔ ⚡ ★ ◆ → etc. render as squares on most system fonts).
+        • Dark-fantasy palette tokens: DF_BG, DF_GOLD, DF_BLOOD, DF_STONE,
+          DF_BONE, DF_SILVER — keep consistent with ui.py and boss HP bar.
+        • Letterbox bars: 80 px top + bottom, gold inner edge, ease in/out 0.4 s.
+        • NO fake door graphic overlay — the camera pans to show the real boss-door
+          tiles which have their own split-open animation in stage.py.
+          Do NOT add a door graphic block here in the future.
+        """
         import math as _math
-        pan_t    = getattr(self, 'cam_pan_timer', 0.0)
-        flash_a  = getattr(self, 'boss_unlock_flash', 0.0)
+
+        pan_t   = getattr(self, 'cam_pan_timer', 0.0)
+        flash_a = getattr(self, 'boss_unlock_flash', 0.0)
         if pan_t <= 0 and flash_a <= 0:
             return
 
-        PAN_DUR = 6.0
-        SLIDE   = 1.5
-        HOLD    = 3.0
-        SLIDE_B = PAN_DUR - SLIDE - HOLD
-        t_now   = pygame.time.get_ticks() / 1000.0
-        w, h    = surface.get_size()
+        # ── Timing constants ──────────────────────────────────────
+        PAN_DUR  = 6.0
+        SLIDE    = 1.5   # camera slides to door
+        HOLD     = 3.0   # camera holds at door
+        SLIDE_B  = PAN_DUR - SLIDE - HOLD   # = 1.5 s return slide
+        t_now    = pygame.time.get_ticks() / 1000.0
+        w, h     = surface.get_size()
 
-        # ── 1. Letterbox bars (cinematic black bars top + bottom) ──
-        if pan_t > 0:
-            # Ease-in bars: appear over 0.4 s at start, hide over 0.4 s at end
-            bar_frac = 1.0
-            if pan_t > PAN_DUR - 0.4:
-                bar_frac = (PAN_DUR - pan_t) / 0.4
-            elif pan_t < 0.4:
-                bar_frac = pan_t / 0.4
-            bar_frac = max(0.0, min(1.0, bar_frac))
-            bar_h    = int(70 * bar_frac)
-            if bar_h > 0:
-                pygame.draw.rect(surface, (0, 0, 0), (0, 0, w, bar_h))
-                pygame.draw.rect(surface, (0, 0, 0), (0, h - bar_h, w, bar_h))
-                # Thin gold line on bar edge
-                gold_a = int(180 * bar_frac)
-                gl = pygame.Surface((w, 2), pygame.SRCALPHA)
-                gl.fill((255, 200, 40, gold_a))
-                surface.blit(gl, (0, bar_h))
-                surface.blit(gl, (0, h - bar_h - 2))
+        # ── Dark-fantasy palette (mirrors ui.py tokens) ───────────
+        DF_BG      = (10,   7,   4)
+        DF_BG2     = (20,  14,   8)
+        DF_GOLD    = (200, 165,  80)
+        DF_GOLD_B  = (240, 205, 100)
+        DF_GOLD_D  = (110,  82,  30)
+        DF_BLOOD   = (160,  32,  32)
+        DF_BLOOD_B = (210,  55,  40)
+        DF_CRIMSON = (110,  18,  18)
+        DF_STONE   = (38,   30,  22)
+        DF_STONE2  = (58,   46,  30)
+        DF_BONE    = (210, 195, 165)
+        DF_SILVER  = (170, 162, 148)
+        DF_PARCH   = (185, 165, 130)
 
-        # ── 2. Full-screen golden flash (first ~1 s) ───────────────
+        # ── Phase flags ───────────────────────────────────────────
+        in_slide_in   = pan_t > SLIDE_B + HOLD          # 6.0 → 4.5
+        in_hold       = SLIDE_B < pan_t <= SLIDE_B + HOLD  # 4.5 → 1.5
+        in_slide_back = pan_t <= SLIDE_B                # 1.5 → 0
+
+        # ── Global fade-in/out alpha ──────────────────────────────
+        b_alpha = 1.0
+        if pan_t > PAN_DUR - 0.35:
+            b_alpha = (PAN_DUR - pan_t) / 0.35
+        elif pan_t < 0.45:
+            b_alpha = pan_t / 0.45
+        b_alpha = max(0.0, min(1.0, b_alpha))
+
+        pulse_hold = (0.88 + 0.12 * _math.sin(t_now * 3.8)) if in_hold else 1.0
+
+        # ══════════════════════════════════════════════════════════
+        # 1. LETTERBOX BARS — 80 px cinematic bars top + bottom
+        # ══════════════════════════════════════════════════════════
+        bar_frac = 1.0
+        if pan_t > PAN_DUR - 0.4:
+            bar_frac = (PAN_DUR - pan_t) / 0.4
+        elif pan_t < 0.4:
+            bar_frac = pan_t / 0.4
+        bar_frac = max(0.0, min(1.0, bar_frac))
+        LB_H = int(80 * bar_frac)   # letterbox bar height
+
+        if LB_H > 0:
+            # Solid dark base
+            pygame.draw.rect(surface, DF_BG,  (0, 0,        w, LB_H))
+            pygame.draw.rect(surface, DF_BG,  (0, h - LB_H, w, LB_H))
+            # Stone texture strips
+            for iy in range(0, LB_H, 12):
+                st = pygame.Surface((w, 1), pygame.SRCALPHA)
+                st.fill((*DF_STONE, 50))
+                surface.blit(st, (0, iy))
+                surface.blit(st, (0, h - LB_H + iy))
+            # Gold inner edge line
+            ga = int(200 * bar_frac * b_alpha)
+            gl = pygame.Surface((w, 2), pygame.SRCALPHA)
+            gl.fill((*DF_GOLD, ga))
+            surface.blit(gl, (0, LB_H))
+            surface.blit(gl, (0, h - LB_H - 2))
+            # Thinner blood line just inside gold
+            bl_s = pygame.Surface((w, 1), pygame.SRCALPHA)
+            bl_s.fill((*DF_BLOOD, int(120 * bar_frac)))
+            surface.blit(bl_s, (0, LB_H + 2))
+            surface.blit(bl_s, (0, h - LB_H - 4))
+
+        # ══════════════════════════════════════════════════════════
+        # 2. VIGNETTE — darkens screen edges (always when pan_t > 0)
+        # ══════════════════════════════════════════════════════════
+        vig_a = int(100 * b_alpha)
+        if vig_a > 0:
+            vig = pygame.Surface((w, h), pygame.SRCALPHA)
+            for band, mul in [(90, 1.0), (50, 0.5), (25, 0.22)]:
+                ba = int(vig_a * mul)
+                if ba > 0:
+                    vig.fill((*DF_BG, ba), (0,       0,       w,    band))
+                    vig.fill((*DF_BG, ba), (0,       h-band,  w,    band))
+                    vig.fill((*DF_BG, ba), (0,       0,       band, h   ))
+                    vig.fill((*DF_BG, ba), (w-band,  0,       band, h   ))
+            surface.blit(vig, (0, 0))
+
+        # ══════════════════════════════════════════════════════════
+        # 3. GOLDEN FLASH — border wash on first unlock moment
+        # ══════════════════════════════════════════════════════════
         if flash_a > 0:
-            a = int(220 * flash_a * flash_a)
-            if a > 0:
+            fa = int(180 * flash_a * flash_a)
+            if fa > 0:
                 fl = pygame.Surface((w, h), pygame.SRCALPHA)
-                fl.fill((0, 0, 0, 0))  # clear to transparent
-                # Multi-layer vignette border glow
-                for thick, mul in [(60, 1.0), (35, 0.55), (18, 0.25)]:
-                    ba = max(0, min(255, int(a * mul)))
+                for thick, mul in [(70, 1.0), (40, 0.5), (20, 0.22)]:
+                    ba = max(0, min(255, int(fa * mul)))
                     if ba > 0:
-                        col = pygame.Color(255, 200, 40, ba)
-                        fl.fill(col, (0,       0,       w,     thick))  # top
-                        fl.fill(col, (0,       h-thick, w,     thick))  # bottom
-                        fl.fill(col, (0,       0,       thick, h    ))  # left
-                        fl.fill(col, (w-thick, 0,       thick, h    ))  # right
-                # Center wash
-                ca = max(0, min(255, int(a * 0.12)))
-                fl.fill(pygame.Color(255, 200, 40, ca))
+                        c = (*DF_GOLD_B, ba)
+                        fl.fill(c, (0,        0,        w,     thick))
+                        fl.fill(c, (0,        h-thick,  w,     thick))
+                        fl.fill(c, (0,        0,        thick, h    ))
+                        fl.fill(c, (w-thick,  0,        thick, h    ))
+                ca = max(0, min(255, int(fa * 0.08)))
+                fl.fill((*DF_GOLD, ca))
                 surface.blit(fl, (0, 0))
 
-        # ── 3. Dramatic "BOSS DOOR OPEN" banner ────────────────────
-        # Visible during entire cinematic (pan_t > 0)
-        if pan_t > 0:
-            # Banner fades in over 0.3 s, holds, fades out last 0.5 s
-            b_alpha = 1.0
-            if pan_t > PAN_DUR - 0.3:
-                b_alpha = (PAN_DUR - pan_t) / 0.3
-            elif pan_t < 0.5:
-                b_alpha = pan_t / 0.5
-            b_alpha = max(0.0, min(1.0, b_alpha))
+        # ══════════════════════════════════════════════════════════
+        # 4. TORCH GLOWS — corners of the letterbox bars
+        # ══════════════════════════════════════════════════════════
+        if LB_H > 0 and b_alpha > 0.2:
+            torch_pulse = 0.7 + 0.3 * _math.sin(t_now * 5.1)
+            torch_a = int(60 * b_alpha * torch_pulse)
+            for tx in (80, w - 80):
+                for ty in (LB_H // 2, h - LB_H // 2):
+                    tg = pygame.Surface((60, 60), pygame.SRCALPHA)
+                    for tr in (28, 18, 10):
+                        ta = max(0, int(torch_a * (28 - tr) / 28))
+                        pygame.draw.circle(tg, (*DF_GOLD, ta), (30, 30), tr)
+                    surface.blit(tg, (tx - 30, ty - 30))
 
-            # Phase indicator: sliding-in / holding / returning
-            in_hold = (SLIDE_B < pan_t <= SLIDE_B + HOLD)
-            in_slide_back = (pan_t <= SLIDE_B)
+        # ══════════════════════════════════════════════════════════
+        # 5. MAIN STONE PANEL — centered banner area
+        # ══════════════════════════════════════════════════════════
+        try:
+            big_font  = pygame.font.SysFont("impact", 52)
+            sub_font  = pygame.font.SysFont("impact", 20)
+            tiny_font = pygame.font.SysFont("impact", 14)
+        except Exception:
+            big_font  = pygame.font.Font(None, 58)
+            sub_font  = pygame.font.Font(None, 24)
+            tiny_font = pygame.font.Font(None, 18)
 
-            # Pulse effect during hold
-            pulse = 0.85 + 0.15 * _math.sin(t_now * 4.5) if in_hold else 1.0
+        # ── Banner text selection ─────────────────────────────────
+        if in_slide_back:
+            main_str = "GET READY FOR BATTLE"
+            main_col = DF_BLOOD_B
+            sub_str  = "The final guardian awaits..."
+            sub_col  = DF_SILVER
+        elif in_hold:
+            main_str = "BOSS ROOM UNLOCKED"
+            main_col = DF_GOLD_B
+            sub_str  = "ALL ROOMS CLEARED  -  THE FINAL CHALLENGE AWAITS"
+            sub_col  = DF_PARCH
+        else:
+            main_str = "BOSS ROOM UNLOCKED"
+            main_col = DF_GOLD
+            sub_str  = "THE DOOR IS OPENING..."
+            sub_col  = DF_SILVER
 
+        main_surf = big_font.render(main_str, True, main_col)
+        sub_surf  = sub_font.render(sub_str,  True, sub_col)
+
+        # Panel geometry (sits in the middle third of the screen)
+        panel_w  = max(main_surf.get_width() + 120, 680)
+        panel_h  = 120
+        panel_x  = w // 2 - panel_w // 2
+        panel_y  = h // 2 - panel_h // 2
+
+        final_a = int(255 * b_alpha * pulse_hold)
+
+        # Stone panel background
+        ps = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        ps.fill((*DF_BG, int(220 * b_alpha)))
+        # Horizontal stone texture strips
+        for iy in range(0, panel_h, 14):
+            ps.fill((*DF_STONE, 40), (0, iy, panel_w, 1))
+        surface.blit(ps, (panel_x, panel_y))
+
+        # Gold outer border
+        border_col = DF_GOLD_B if in_hold else DF_GOLD
+        pygame.draw.rect(surface, border_col,
+                         (panel_x, panel_y, panel_w, panel_h), 2, border_radius=4)
+        # Blood inner border
+        pygame.draw.rect(surface, DF_BLOOD,
+                         (panel_x + 3, panel_y + 3, panel_w - 6, panel_h - 6), 1, border_radius=3)
+
+        # Corner rivets
+        for (rx, ry) in [(panel_x + 7, panel_y + 7),
+                         (panel_x + panel_w - 7, panel_y + 7),
+                         (panel_x + 7, panel_y + panel_h - 7),
+                         (panel_x + panel_w - 7, panel_y + panel_h - 7)]:
+            pygame.draw.circle(surface, DF_GOLD_D, (rx, ry), 5)
+            pygame.draw.circle(surface, DF_GOLD,   (rx, ry), 5, 2)
+            pygame.draw.circle(surface, DF_GOLD_B, (rx - 1, ry - 1), 2)
+
+        # ── Main title text ───────────────────────────────────────
+        tx = w // 2 - main_surf.get_width() // 2
+        ty = panel_y + 18
+
+        # Carved shadow
+        shd = big_font.render(main_str, True, (0, 0, 0))
+        shd_s = pygame.Surface(shd.get_size(), pygame.SRCALPHA)
+        shd_s.blit(shd, (0, 0)); shd_s.set_alpha(final_a)
+        surface.blit(shd_s, (tx + 3, ty + 3))
+
+        # Gold outline pass
+        out_col = DF_GOLD_D if in_slide_back else DF_GOLD_D
+        for ox, oy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+            out = big_font.render(main_str, True, out_col)
+            out_s = pygame.Surface(out.get_size(), pygame.SRCALPHA)
+            out_s.blit(out, (0, 0)); out_s.set_alpha(int(final_a * 0.6))
+            surface.blit(out_s, (tx + ox, ty + oy))
+
+        # Main text
+        ms = pygame.Surface(main_surf.get_size(), pygame.SRCALPHA)
+        ms.blit(main_surf, (0, 0)); ms.set_alpha(final_a)
+        surface.blit(ms, (tx, ty))
+
+        # ── Rune divider line under title ─────────────────────────
+        div_y = ty + main_surf.get_height() + 4
+        line_a = int(160 * b_alpha * pulse_hold)
+        ls = pygame.Surface((panel_w - 40, 2), pygame.SRCALPHA)
+        ls.fill((*DF_GOLD_D, line_a))
+        surface.blit(ls, (panel_x + 20, div_y))
+        # Diamond center accent
+        cx_d = w // 2
+        pts_d = [(cx_d, div_y - 4), (cx_d + 6, div_y + 1),
+                 (cx_d, div_y + 6), (cx_d - 6, div_y + 1)]
+        da_s = pygame.Surface((20, 14), pygame.SRCALPHA)
+        pygame.draw.polygon(da_s, (*DF_GOLD, line_a), [(p[0] - cx_d + 10, p[1] - div_y + 4) for p in pts_d])
+        surface.blit(da_s, (cx_d - 10, div_y - 4))
+
+        # ── Subtitle text ─────────────────────────────────────────
+        sx2 = w // 2 - sub_surf.get_width() // 2
+        sy2 = div_y + 10
+        subs = pygame.Surface(sub_surf.get_size(), pygame.SRCALPHA)
+        subs.blit(sub_surf, (0, 0)); subs.set_alpha(int(final_a * 0.90))
+        surface.blit(subs, (sx2, sy2))
+
+        # ── Hold-phase outer gold divider lines (full-width) ──────
+        if in_hold:
+            fw_a = int(140 * b_alpha * pulse_hold)
+            for ly in (panel_y - 8, panel_y + panel_h + 6):
+                fls = pygame.Surface((w - 100, 1), pygame.SRCALPHA)
+                fls.fill((*DF_GOLD_D, fw_a))
+                surface.blit(fls, (50, ly))
+
+        # NOTE FOR FUTURE PROMPTS
+        # Section 6 (fake door graphic overlay) was intentionally removed.
+        # The camera pans to the actual boss-room door tiles, which have their
+        # own split-open animation (stage.py Room._draw_door_opening_anim).
+        # Do NOT add a door graphic overlay here — the real tiles are visible.
+
+        # ══════════════════════════════════════════════════════════
+        # 7. SLIDE-BACK PHASE — blood-red pulsing "GET READY" warning
+        # ══════════════════════════════════════════════════════════
+        if in_slide_back and pan_t < SLIDE_B * 0.80:
+            pulse2 = 0.55 + 0.45 * abs(_math.sin(t_now * 7.5))
             try:
-                big_font = pygame.font.SysFont("impact", 52)
-                sub_font = pygame.font.SysFont("impact", 22)
+                warn_font = pygame.font.SysFont("impact", 44)
             except Exception:
-                big_font = pygame.font.Font(None, 58)
-                sub_font = pygame.font.Font(None, 26)
-
-            # Main banner
-            main_col  = (255, 220, 50) if in_hold else (255, 200, 40)
-            main_text = big_font.render("⚔  BOSS ROOM UNLOCKED  ⚔", True, main_col)
-            shd_text  = big_font.render("⚔  BOSS ROOM UNLOCKED  ⚔", True, (60, 30, 0))
-
-            # Subtitle changes per phase
-            if in_slide_back:
-                sub_str = "GET READY FOR BATTLE"
-                sub_col = (255, 120, 80)
-            elif in_hold:
-                sub_str = "ALL ROOMS CLEARED  —  THE FINAL CHALLENGE AWAITS"
-                sub_col = (220, 210, 160)
-            else:
-                sub_str = "THE DOOR IS OPENING..."
-                sub_col = (200, 200, 200)
-            sub_text = sub_font.render(sub_str, True, sub_col)
-
-            bx2 = w // 2 - main_text.get_width() // 2
-            by2 = h // 2 - main_text.get_height() // 2 - 30
-
-            final_alpha = int(255 * b_alpha * pulse)
-
-            # Shadow
-            ss = pygame.Surface(shd_text.get_size(), pygame.SRCALPHA)
-            ss.blit(shd_text, (0, 0)); ss.set_alpha(final_alpha)
-            surface.blit(ss, (bx2 + 4, by2 + 4))
-
-            # Main
-            ms = pygame.Surface(main_text.get_size(), pygame.SRCALPHA)
-            ms.blit(main_text, (0, 0)); ms.set_alpha(final_alpha)
-            surface.blit(ms, (bx2, by2))
-
-            # Subtitle
-            sub_x = w // 2 - sub_text.get_width() // 2
-            sub_y = by2 + main_text.get_height() + 8
-            subs = pygame.Surface(sub_text.get_size(), pygame.SRCALPHA)
-            subs.blit(sub_text, (0, 0)); subs.set_alpha(int(final_alpha * 0.88))
-            surface.blit(subs, (sub_x, sub_y))
-
-            # ── Pulsing gold divider lines ──────────────────────
-            if in_hold:
-                line_a = int(180 * b_alpha * pulse)
-                line_y1 = by2 - 10
-                line_y2 = sub_y + sub_text.get_height() + 10
-                for ly in (line_y1, line_y2):
-                    ls = pygame.Surface((w - 120, 2), pygame.SRCALPHA)
-                    ls.fill((255, 200, 40, line_a))
-                    surface.blit(ls, (60, ly))
-
-            # ── Red "GET READY" pulse when returning ────────────
-            if in_slide_back and pan_t < SLIDE_B * 0.7:
-                pulse2  = 0.6 + 0.4 * abs(_math.sin(t_now * 8.0))
-                try:
-                    warn_font = pygame.font.SysFont("impact", 40)
-                except Exception:
-                    warn_font = pygame.font.Font(None, 46)
-                warn_text = warn_font.render("⚡ GET READY ⚡", True, (255, 80, 60))
-                wa = int(255 * (pan_t / (SLIDE_B * 0.7)) * pulse2)
+                warn_font = pygame.font.Font(None, 50)
+            warn_text = warn_font.render("-- GET READY --", True, DF_BLOOD_B)
+            wa = int(255 * (pan_t / (SLIDE_B * 0.80)) * pulse2 * b_alpha)
+            if wa > 0:
                 ws = pygame.Surface(warn_text.get_size(), pygame.SRCALPHA)
                 ws.blit(warn_text, (0, 0)); ws.set_alpha(wa)
                 surface.blit(ws, (w // 2 - warn_text.get_width() // 2,
-                                  by2 - warn_text.get_height() - 18))
+                                  panel_y - warn_text.get_height() - 14))
 
     def _draw_boss_door_arrow(self, surface):
         """Screen-edge arrow pointing toward boss door, fades out after 6 s."""

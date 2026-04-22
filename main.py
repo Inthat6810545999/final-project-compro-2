@@ -20,11 +20,10 @@ from game_manager import GameManager
 
 
 def main():
-    # ── ต้อง pre_init mixer ก่อน pygame.init() ──────────────
-    # frequency=44100 ต้องตรงกับ SAMPLE_RATE ใน sound_manager.py
+
     pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
     pygame.init()
-    # ยืนยัน mixer init สำเร็จ (ถ้าไม่มีการ์ดเสียงก็จะ skip เงียบๆ)
+
     if not pygame.mixer.get_init():
         print("[Audio] ไม่พบอุปกรณ์เสียง – เกมจะทำงานโดยไม่มีเสียง")
 

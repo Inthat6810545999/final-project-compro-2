@@ -13,7 +13,7 @@ from constants import (
 )
 from enemy import make_enemy
 
-DOOR_ANIM_DUR = 1.6   # seconds for boss-door opening animation
+DOOR_ANIM_DUR = 2.2   # seconds for boss-door opening animation
 
 # ── TILE TEXTURE CACHE ──────────────────────────────────────────────────────
 _TILE_CACHE: dict = {}
@@ -694,11 +694,14 @@ class Room:
     # ── Boss-door opening animation ───────────────────────────
     def _draw_door_opening_anim(self, surface, cam_x, cam_y, theme):
         """
-        Cinematic boss-door opening:
-          Phase 0-30 %  – chains shatter (particle burst already emitted)
-          Phase 0-60 %  – golden magic ring expands from center
-          Phase 20-100% – iron bars slide upward & fade out
-          Phase 0-100%  – particles fly
+        Cinematic SPLIT-OPEN boss-door animation.
+        The two door panel halves slide apart (left panel → left, right panel → right)
+        with a bright gold flash at the crack, expanding shockwave ring, and particles.
+
+        Phase 0-15%  : bright central flash (chains shatter)
+        Phase 0-70%  : golden shockwave ring expands outward
+        Phase 10-100%: left & right door halves slide apart, fade at edges
+        Phase 0-100% : spark/chunk particles fly
         """
         THEME_MAGIC = {
             "forest":  (60,  220,  80),
@@ -721,6 +724,10 @@ class Room:
         IRON_D   = (22, 24, 30)
         FRAME    = 10
 
+        # Ease-out curve for sliding panels (fast start, decelerates)
+        def ease_out(t):
+            return 1.0 - (1.0 - t) ** 3
+
         for dr in self.door_rects:
             sx = dr.x - int(cam_x)
             sy = dr.y - int(cam_y)
@@ -729,8 +736,16 @@ class Room:
             iw = w - FRAME * 2; ih = h - FRAME * 2
             cx2 = sx + w // 2; cy2 = sy + h // 2
 
-            # ── Stone frame fades out slowly ──────────────────
-            frame_alpha = max(0, int(255 * (1.0 - progress * 0.7)))
+            # How far each panel slides (half the door width + a bit extra)
+            slide_progress = ease_out(max(0.0, (progress - 0.10) / 0.90))
+            max_slide = w // 2 + 8   # slides fully off its original half
+            slide_px  = int(slide_progress * max_slide)
+
+            # Panel alpha fades as it slides away
+            panel_alpha = max(0, int(255 * (1.0 - slide_progress * 0.85)))
+
+            # ── 1. Stone outer frame (stays fixed, fades last) ─
+            frame_alpha = max(0, int(255 * (1.0 - progress * 0.65)))
             if frame_alpha > 0:
                 fs = pygame.Surface((w, h), pygame.SRCALPHA)
                 pygame.draw.rect(fs, (*STONE_D, frame_alpha), (0, 0, w, h))
@@ -738,85 +753,116 @@ class Room:
                 pygame.draw.rect(fs, (*STONE_M, frame_alpha), (0, h - FRAME, w, FRAME))
                 pygame.draw.rect(fs, (*STONE_M, frame_alpha), (0, 0, FRAME, h))
                 pygame.draw.rect(fs, (*STONE_M, frame_alpha), (w - FRAME, 0, FRAME, h))
-                # Bevel highlights
                 pygame.draw.line(fs, (*STONE_H, frame_alpha), (1, 1), (w - 2, 1), 2)
                 pygame.draw.line(fs, (*STONE_H, frame_alpha), (1, 1), (1, h - 2), 2)
                 surface.blit(fs, (sx, sy))
 
-            # ── Inner void + dying magic glow ─────────────────
-            glow_a = max(0, int(120 * (1.0 - progress * 1.5)))
-            if glow_a > 0 and iw > 0 and ih > 0:
-                en = pygame.Surface((iw, ih), pygame.SRCALPHA)
-                en.fill((*magic, glow_a))
-                surface.blit(en, (ix, iy))
+            if iw > 0 and ih > 0:
+                # ── 2. Inner void revealed behind panels ──────
+                void_surf = pygame.Surface((iw, ih))
+                void_surf.fill((6, 4, 12))
+                # Glow from inside (magic light pouring through the gap)
+                gap_glow_a = int(180 * slide_progress)
+                if gap_glow_a > 0:
+                    gg = pygame.Surface((iw, ih), pygame.SRCALPHA)
+                    gg.fill((*magic, gap_glow_a))
+                    void_surf.blit(gg, (0, 0))
+                surface.blit(void_surf, (ix, iy))
 
-            # ── Golden expanding shockwave ring ───────────────
-            if progress < 0.65:
-                t_norm = progress / 0.65
-                ring_r = int(t_norm * max(w, h) * 1.1)
-                ring_a = int(220 * (1.0 - t_norm) ** 1.5)
+                # ── 3. LEFT door panel slides LEFT ────────────
+                if panel_alpha > 0:
+                    half_w = iw // 2
+                    # Build the left door-panel surface
+                    lp = pygame.Surface((half_w, ih), pygame.SRCALPHA)
+                    # Background fill
+                    pygame.draw.rect(lp, (*IRON_M, panel_alpha), (0, 0, half_w, ih))
+                    # Vertical bars on left panel
+                    bar_thick = 5
+                    bar_count = max(2, half_w // 13)
+                    spacing   = half_w / bar_count
+                    for i in range(bar_count):
+                        bx_c = int(i * spacing) + int(spacing / 2)
+                        bx_l = max(0, bx_c - bar_thick // 2)
+                        bw   = min(bar_thick, half_w - bx_l)
+                        pygame.draw.rect(lp, (*IRON_D, panel_alpha), (bx_l, 0, bw, ih))
+                        pygame.draw.line(lp, (*IRON_H, panel_alpha), (bx_l + 1, 3), (bx_l + 1, ih - 3), 1)
+                        pygame.draw.line(lp, (*IRON_SH, min(panel_alpha, 180)), (bx_l + 1, 4), (bx_l + 2, 12), 1)
+                    # Horizontal crossbar
+                    for rel_y in [ih // 3, ih * 2 // 3]:
+                        pygame.draw.rect(lp, (*IRON_D, panel_alpha), (0, rel_y - 3, half_w, 5))
+                        pygame.draw.line(lp, (*IRON_H, panel_alpha), (0, rel_y - 2), (half_w, rel_y - 2), 1)
+                    # Right edge of left panel — bright seam glows gold as it opens
+                    seam_a = min(panel_alpha, int(255 * slide_progress))
+                    if seam_a > 10:
+                        pygame.draw.line(lp, (*gold, seam_a), (half_w - 1, 0), (half_w - 1, ih), 2)
+                    # Blit left panel shifted LEFT by slide_px
+                    surface.blit(lp, (ix - slide_px, iy))
+
+                    # ── 4. RIGHT door panel slides RIGHT ──────
+                    rp = pygame.Surface((half_w, ih), pygame.SRCALPHA)
+                    pygame.draw.rect(rp, (*IRON_M, panel_alpha), (0, 0, half_w, ih))
+                    for i in range(bar_count):
+                        bx_c = int(i * spacing) + int(spacing / 2)
+                        bx_l = max(0, bx_c - bar_thick // 2)
+                        bw   = min(bar_thick, half_w - bx_l)
+                        pygame.draw.rect(rp, (*IRON_D, panel_alpha), (bx_l, 0, bw, ih))
+                        pygame.draw.line(rp, (*IRON_H, panel_alpha), (bx_l + 1, 3), (bx_l + 1, ih - 3), 1)
+                        pygame.draw.line(rp, (*IRON_SH, min(panel_alpha, 180)), (bx_l + 1, 4), (bx_l + 2, 12), 1)
+                    for rel_y in [ih // 3, ih * 2 // 3]:
+                        pygame.draw.rect(rp, (*IRON_D, panel_alpha), (0, rel_y - 3, half_w, 5))
+                        pygame.draw.line(rp, (*IRON_H, panel_alpha), (0, rel_y - 2), (half_w, rel_y - 2), 1)
+                    # Left edge seam glow
+                    if seam_a > 10:
+                        pygame.draw.line(rp, (*gold, seam_a), (0, 0), (0, ih), 2)
+                    # Blit right panel shifted RIGHT by slide_px
+                    surface.blit(rp, (ix + half_w + slide_px, iy))
+
+                # ── 5. Bright gold crack/seam between panels ──
+                # Fades in quickly then fades out as gap widens
+                seam_peak  = 0.25
+                if progress < seam_peak:
+                    crack_a = int(255 * (progress / seam_peak))
+                else:
+                    crack_a = int(255 * max(0.0, 1.0 - (progress - seam_peak) / 0.40))
+                if crack_a > 0:
+                    crack_w = max(2, int(slide_px * 2))
+                    crack_surf = pygame.Surface((crack_w + 8, ih + 8), pygame.SRCALPHA)
+                    for gw, ga_mul in [(crack_w + 8, 0.15), (crack_w // 2 + 4, 0.35), (4, 0.80)]:
+                        pygame.draw.rect(crack_surf, (*gold, int(crack_a * ga_mul)),
+                                         ((crack_w + 8 - gw) // 2, 0, gw, ih + 8))
+                    surface.blit(crack_surf, (cx2 - (crack_w + 8) // 2, iy - 4))
+
+            # ── 6. Expanding shockwave ring ────────────────────
+            if progress < 0.70:
+                t_norm  = progress / 0.70
+                ring_r  = int(t_norm * max(w, h) * 1.3)
+                ring_a  = int(230 * (1.0 - t_norm) ** 1.8)
                 if ring_r > 0 and ring_a > 0:
                     for thickness, col, a_mul in [
-                        (8,  gold,            1.0),
-                        (4,  (255, 255, 200), 0.7),
-                        (16, gold,            0.3),
+                        (10, gold,            1.0),
+                        (5,  (255, 255, 200), 0.65),
+                        (20, gold,            0.25),
                     ]:
-                        rs = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+                        rs = pygame.Surface((ring_r * 2 + 6, ring_r * 2 + 6), pygame.SRCALPHA)
                         pygame.draw.circle(rs, (*col, int(ring_a * a_mul)),
-                                           (ring_r + 2, ring_r + 2), ring_r, thickness)
-                        surface.blit(rs, (cx2 - ring_r - 2, cy2 - ring_r - 2))
+                                           (ring_r + 3, ring_r + 3), ring_r, thickness)
+                        surface.blit(rs, (cx2 - ring_r - 3, cy2 - ring_r - 3))
 
-            # ── Central flash (very early) ────────────────────
-            if progress < 0.20:
-                flash_a = int(200 * (1.0 - progress / 0.20) ** 2)
-                if flash_a > 0 and iw > 0 and ih > 0:
-                    fl = pygame.Surface((iw + 20, ih + 20), pygame.SRCALPHA)
-                    fl.fill((*gold, flash_a))
-                    surface.blit(fl, (ix - 10, iy - 10))
+            # ── 7. Central flash on initial break ─────────────
+            if progress < 0.18:
+                flash_a = int(255 * (1.0 - progress / 0.18) ** 2)
+                fl = pygame.Surface((w + 24, h + 24), pygame.SRCALPHA)
+                fl.fill((*gold, flash_a))
+                surface.blit(fl, (sx - 12, sy - 12))
 
-            # ── Iron bars slide upward & fade ─────────────────
-            bar_progress = max(0.0, (progress - 0.15) / 0.85)  # start sliding at 15 %
-            slide_px = int(bar_progress * (h + 30))
-            bar_alpha = max(0, int(255 * (1.0 - bar_progress * 1.2)))
-
-            if bar_alpha > 0 and iw > 0 and ih > 0:
-                bar_count = max(3, iw // 14)
-                bar_thick = 6
-                spacing   = iw / bar_count
-
-                # How many pixels of bar are still visible (clipped at top)
-                visible_h = max(0, ih - slide_px)
-                if visible_h > 0:
-                    bs = pygame.Surface((iw, visible_h), pygame.SRCALPHA)
-                    for i in range(bar_count + 1):
-                        bx_c = int(i * spacing)
-                        bx_l = bx_c - bar_thick // 2
-                        if bx_l < 0: bx_l = 0
-                        if bx_l >= iw: continue
-                        bw = min(bar_thick, iw - bx_l)
-                        pygame.draw.rect(bs, (*IRON_M, bar_alpha), (bx_l, 0, bw, visible_h))
-                        pygame.draw.line(bs, (*IRON_H, bar_alpha),
-                                         (bx_l + 1, 3), (bx_l + 1, visible_h - 3), 2)
-                        pygame.draw.line(bs, (*IRON_SH, min(bar_alpha, 200)),
-                                         (bx_l + 1, 4), (bx_l + 2, 14), 1)
-                        pygame.draw.line(bs, (*IRON_D, bar_alpha),
-                                         (bx_l + bw - 1, 0), (bx_l + bw - 1, visible_h), 1)
-                    # Horizontal reinforcing bars
-                    for rel_y in [visible_h // 3, visible_h * 2 // 3]:
-                        if 0 < rel_y < visible_h - 4:
-                            pygame.draw.rect(bs, (*IRON_M, bar_alpha), (0, rel_y - 3, iw, 6))
-                            pygame.draw.line(bs, (*IRON_H, bar_alpha),
-                                             (0, rel_y - 2), (iw, rel_y - 2), 1)
-                    surface.blit(bs, (ix, iy))
-
-            # ── Outer glow pulse (gold) ────────────────────────
-            if progress < 0.50:
-                gout_a = int(140 * (1.0 - progress / 0.50))
-                for gs2 in (6, 3, 1):
-                    gg = pygame.Surface((w + gs2 * 4, h + gs2 * 4), pygame.SRCALPHA)
-                    pygame.draw.rect(gg, (*gold, int(gout_a * (0.3 + gs2 * 0.1))),
+            # ── 8. Outer gold glow rect ────────────────────────
+            if progress < 0.55:
+                gout_a = int(160 * (1.0 - progress / 0.55))
+                for gs2 in (7, 4, 1):
+                    gg2 = pygame.Surface((w + gs2 * 4, h + gs2 * 4), pygame.SRCALPHA)
+                    pygame.draw.rect(gg2, (*gold, int(gout_a * (0.25 + gs2 * 0.10))),
                                      (0, 0, w + gs2 * 4, h + gs2 * 4), gs2, border_radius=6)
-                    surface.blit(gg, (sx - gs2 * 2, sy - gs2 * 2))
+                    surface.blit(gg2, (sx - gs2 * 2, sy - gs2 * 2))
 
         # Draw particles on top of everything
         for p in self.door_anim_particles:
@@ -942,15 +988,15 @@ class Stage:
             return room
 
         # ── Room budget per stage ──────────────────────────────
-        # Stage 1 : hub + 3 spokes          = 4 rooms max
-        # Stage 2 : hub + 4 spokes + 1 sec  = 6 rooms max
-        # Stage 3 : hub + 4 spokes + 2 sec  = 7 rooms max
-        # Stage 4 : hub + 4 spokes + 3 sec + 1 ter = 9 rooms max
-        # Stage 5+: hub + 4 spokes + 3 sec + 2 ter = 10 rooms max
+        # Stage 1 : hub + 4 spokes + 1 sec           =  6 rooms max
+        # Stage 2 : hub + 4 spokes + 2 sec           =  7 rooms max
+        # Stage 3 : hub + 4 spokes + 3 sec           =  8 rooms max
+        # Stage 4 : hub + 4 spokes + 4 sec + 1 ter   = 10 rooms max
+        # Stage 5+: hub + 4 spokes + 4 sec + 2+ ter  = 11+ rooms max
         # stage_id is 0-based: 0=stage1, 1=stage2, ...
-        max_primary   = 3 if self.stage_id == 0 else 4
-        max_secondary = {0: 0, 1: 1, 2: 2}.get(self.stage_id, 3)
-        max_tertiary  = max(0, self.stage_id - 2)   # 0,0,0,1,2 for stages 0-4
+        max_primary   = 4   # always 4 primary spokes (N/S/E/W)
+        max_secondary = {0: 1, 1: 2, 2: 3}.get(self.stage_id, 4)
+        max_tertiary  = max(0, self.stage_id - 1)   # 0,0,1,2,3 for stages 0-4
 
         # ── 3) Primary spokes N/S/E/W from hub ────────────────
         dirs = ["N", "S", "E", "W"]
@@ -1089,14 +1135,18 @@ class Stage:
             magic_cols = [(200, 120, 255), (255,  80, 200), (120, 200, 255), (255, 255, 200)]
             for dr in room.door_rects:
                 cx, cy = dr.centerx, dr.centery
-                for _ in range(35):                       # dense sparks
+                # Emit particles from the full height of each door tile
+                for _ in range(50):                       # dense sparks
                     col = random.choice(gold_cols + magic_cols)
+                    # Randomize y along door height for spread
+                    emit_y = dr.y + random.randint(0, dr.h)
                     room.door_anim_particles.append(
-                        DoorOpenParticle(cx, cy, col, kind="spark"))
-                for _ in range(10):                       # larger debris
+                        DoorOpenParticle(cx, emit_y, col, kind="spark"))
+                for _ in range(15):                       # larger debris chunks
                     col = random.choice(gold_cols)
+                    emit_y = dr.y + random.randint(0, dr.h)
                     room.door_anim_particles.append(
-                        DoorOpenParticle(cx, cy, col, kind="chunk"))
+                        DoorOpenParticle(cx, emit_y, col, kind="chunk"))
 
         if room.doors_open:
             return
