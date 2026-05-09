@@ -25,7 +25,7 @@ def main():
     pygame.init()
 
     if not pygame.mixer.get_init():
-        print("[Audio] ไม่พบอุปกรณ์เสียง – เกมจะทำงานโดยไม่มีเสียง")
+        print("[Audio] No audio device found – game will run silently")
 
     screen = pygame.display.set_mode((1280, 720))
     pygame.display.set_caption("Sausage Man: Legends of Midgard")

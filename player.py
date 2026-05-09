@@ -23,7 +23,7 @@ _GUN_CACHE: dict = {}   # weapon_name -> Surface | None
 
 # Display size (w, h) per gun shape — tweak to taste
 _GUN_SIZE = {
-    "pistol":   (40, 24),   # ลดจาก (52,36) — พอดีตัว
+    "pistol":   (40, 24),   # reduced from (52,36) — fits the character
     "revolver": (44, 26),
     "smg":      (44, 22),
     "shotgun":  (50, 28),
@@ -172,9 +172,9 @@ class Player:
         self._armor_regen_timer = 0.0
 
         # Passive mana regen: 8 mana/sec, starts after 2s without shooting
-        self.mana_regen_rate   = 8.0   # mana per second (ปรับค่าได้)
-        self.mana_regen_delay  = 2.0   # วินาทีหลังยิงค่อย regen
-        self._mana_regen_timer = 0.0   # นับขึ้นตลอด, reset เมื่อยิง
+        self.mana_regen_rate   = 8.0   # mana per second (adjustable)
+        self.mana_regen_delay  = 2.0   # seconds after shooting before regen starts
+        self._mana_regen_timer = 0.0   # counts up continuously, resets when shooting
 
         # ── Armor visual FX system ────────────────────────────────────
         self._armor_particles: list = []
@@ -328,7 +328,7 @@ class Player:
         sy = int(self.y - cam_y)
         r  = self.RADIUS
 
-        # Drop shadow — ปรับขึ้นมา (เดิม sy+34 → sy+24)
+        # Drop shadow — shifted up (was sy+34 → now sy+24)
         feet_y  = sy + 24
         shadow_s = pygame.Surface((60, 14), pygame.SRCALPHA)
         pygame.draw.ellipse(shadow_s, (0, 0, 0, 90), (0, 0, 60, 14))
@@ -580,14 +580,14 @@ class Player:
         self._armor_particles.append(p)
 
     # ── Master armor draw ─────────────────────────────────────────────────────
-    # ทุกชุดวาดลง canvas ขนาดเท่ากัน 80×96 px  (cx=40, cy=44 = จุดกึ่งกลางหน้าอก)
-    # ปรับตำแหน่งทั้งหมดได้ที่ _ARM_BLIT_OX / _ARM_BLIT_OY
+    # All sets drawn onto the same 80×96 px canvas  (cx=40, cy=44 = chest center)
+    # Adjust all positions via _ARM_BLIT_OX / _ARM_BLIT_OY
     _ARM_CW      = 80    # canvas width
     _ARM_CH      = 96    # canvas height
     _ARM_CX      = 40    # chest center X inside canvas
     _ARM_CY      = 44    # chest center Y inside canvas
     _ARM_BLIT_OX = 40    # blit offset X  (surface.blit at sx - _ARM_BLIT_OX)
-    _ARM_BLIT_OY = 28    # blit offset Y  (surface.blit at sy - _ARM_BLIT_OY)  ← ลดเพื่อเลื่อนลง
+    _ARM_BLIT_OY = 28    # blit offset Y  (surface.blit at sy - _ARM_BLIT_OY)  ← reduced to shift sprite down
 
     def _draw_armor(self, surface, sx, sy):
         """Draw armor overlay on the player sprite — Dark Fantasy theme."""
@@ -662,7 +662,7 @@ class Player:
 
             surface.blit(buf, (pw - sz - 2, ph_y - sz - 2))
 
-        # ── 3. Armor shape — วาดลง canvas ขนาดคงที่แล้ว blit ──────────
+        # ── 3. Armor shape — draw onto fixed-size canvas then blit ──────────
         style  = sd["style"]
         canvas = pygame.Surface((self._ARM_CW, self._ARM_CH), pygame.SRCALPHA)
         cx, cy = self._ARM_CX, self._ARM_CY
@@ -722,7 +722,7 @@ class Player:
         for row in range(8):
             for col in range(8):
                 ox  = (row % 2) * 3
-                lx  = cx - 23 + col * lw + ox
+                lx  = cx - 25 + col * lw + ox
                 ly  = cy - 14 + row * lh
                 ring = pygame.Surface((lw + 2, lh + 2), pygame.SRCALPHA)
                 pygame.draw.ellipse(ring, (*c1, 255), (0, 0, lw + 2, lh + 2))
@@ -732,7 +732,7 @@ class Player:
         sa = int(50 + 40 * math.sin(t * 2.8))
         sh = pygame.Surface((44, 24), pygame.SRCALPHA)
         pygame.draw.ellipse(sh, (*c3, sa), (0, 0, 44, 24))
-        canvas.blit(sh, (cx - 22, cy - 13))
+        canvas.blit(sh, (cx - 24, cy - 13))
 
     def _armor_plate(self, canvas, cx, cy, c1, c2, c3, t):
         """Plate Armor — breastplate + shine (no pauldrons)."""
@@ -874,6 +874,6 @@ class Player:
     def use_mana(self, amount):
         if self.can_use_mana(amount):
             self.mana -= amount
-            self._mana_regen_timer = 0.0   # reset delay หลังยิง
+            self._mana_regen_timer = 0.0   # reset delay after shooting
             return True
         return False

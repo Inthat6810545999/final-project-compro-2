@@ -5,6 +5,7 @@ bullet.py  –  Player bullet projectile + HUD + VFX OVERHAUL
   - draw_hud: weapon info panel, bar shine, slot glass highlights
 """
 import math
+import os
 import pygame
 from constants import (
     YELLOW, CYAN, WHITE, RED, GREEN, GOLD,
@@ -15,6 +16,33 @@ from constants import (
 )
 
 _TRAIL_LEN = 8   # history positions per bullet
+
+# ── Skill icon cache ──────────────────────────────────────────────────────────
+_SKILL_ICON_CACHE: dict = {}   # (skill_type, size) -> Surface | None
+_SKILL_ICON_MAP = {
+    "dash":        "dash.png",
+    "star_spread": "star_sh.png",
+    "rapid_fire":  "frenzy.png",
+}
+
+def _load_skill_icon(skill_type: str, size: int):
+    """Load and cache a skill icon PNG scaled to size×size. Returns None if missing."""
+    cache_key = (skill_type, size)
+    if cache_key in _SKILL_ICON_CACHE:
+        return _SKILL_ICON_CACHE[cache_key]
+    filename = _SKILL_ICON_MAP.get(skill_type)
+    surf = None
+    if filename:
+        base = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(base, "sprite", "skill_icon", filename)
+        if os.path.exists(path):
+            try:
+                raw  = pygame.image.load(path).convert_alpha()
+                surf = pygame.transform.smoothscale(raw, (size, size))
+            except Exception as e:
+                print(f"[skill_icon] Failed to load {filename}: {e}")
+    _SKILL_ICON_CACHE[cache_key] = surf
+    return surf
 
 class Bullet:
     """Player-fired projectile with glowing trail."""
@@ -613,32 +641,42 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
 
         pygame.draw.rect(surface, bg_col,  (sx, slot_y, SLOT_W, SLOT_H), border_radius=10)
         pygame.draw.rect(surface, brd_col, (sx, slot_y, SLOT_W, SLOT_H), 2, border_radius=10)
-        # Glass highlight
+
+        # ── Skill icon fills the slot (drawn before overlays/text) ──
+        ICON_SIZE = SLOT_W - 4
+        icon_surf = _load_skill_icon(sk["type"], ICON_SIZE)
+        icon_col  = col if ready else (120, 120, 140)
+        if icon_surf is not None:
+            surface.blit(icon_surf, (sx + 2, slot_y + 2))
+        else:
+            icon_map = {"dash": "D", "star_spread": "S", "rapid_fire": "F"}
+            icon_txt = icon_map.get(sk["type"], "?")
+            icon_s   = _font(20).render(icon_txt, True, icon_col)
+            surface.blit(icon_s, (sx + SLOT_W//2 - icon_s.get_width()//2, slot_y + 10))
+
+        # Glass highlight (on top of icon)
         gl = pygame.Surface((SLOT_W-6, SLOT_H//3), pygame.SRCALPHA)
         gl.fill((255,255,255,18))
         surface.blit(gl, (sx+3, slot_y+3))
 
-        # Cooldown overlay (fills from bottom)
+        # Cooldown overlay — dark fill from bottom (on top of icon)
         if not ready:
             fill_h = int(SLOT_H * (cd / max(0.01, cdmax)))
             ov = pygame.Surface((SLOT_W - 4, max(1, fill_h)), pygame.SRCALPHA)
             ov.fill((0, 0, 0, 160))
             surface.blit(ov, (sx + 2, slot_y + SLOT_H - fill_h))
 
+        # Re-draw border on top so it's always crisp over the icon
+        pygame.draw.rect(surface, brd_col, (sx, slot_y, SLOT_W, SLOT_H), 2, border_radius=10)
+
         # Key label (top-left corner badge)
         key_font_size = 9 if KEY_LABELS[idx] == "SPC" else 11
         key_s = _font(key_font_size).render(KEY_LABELS[idx], True, WHITE)
         surface.blit(key_s, (sx + 4, slot_y + 3))
 
-        # Skill icon emoji / symbol
-        icon_map = {"dash": "D", "star_spread": "S", "rapid_fire": "F"}
-        icon_txt = icon_map.get(sk["type"], "?")
-        icon_s   = _font(20).render(icon_txt, True, col if ready else (120, 120, 140))
-        surface.blit(icon_s, (sx + SLOT_W//2 - icon_s.get_width()//2, slot_y + 10))
-
         # Skill name
         nm_s = _font(9).render(sk["name"][:7], True, col if ready else (120, 120, 140))
-        surface.blit(nm_s, (sx + SLOT_W//2 - nm_s.get_width()//2, slot_y + 36))
+        surface.blit(nm_s, (sx + SLOT_W//2 - nm_s.get_width()//2, slot_y + SLOT_H - 20))
 
         # CD countdown or READY
         if not ready:
@@ -681,3 +719,171 @@ def draw_hud(surface, player, stage, current_stage_idx, total_stages, run_time=0
         ry += 22
 
     return pb_rect
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SkillParticle  —  rich particle-based VFX for skill activations
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SkillParticle:
+    """
+    Unified particle for skill VFX. ptype controls rendering:
+      'ring'  – expanding shockwave ring
+      'spark' – fast-moving bright dot with glow
+      'orb'   – slower glowing sphere
+      'ghost' – fading afterimage circle (dash trail)
+      'line'  – fading motion-blur line segment (world space)
+      'beam'  – thick directional light beam that fades
+      'flash' – full-screen colour tint (screen space, drawn differently)
+    """
+    __slots__ = (
+        'ptype', 'x', 'y', 'vx', 'vy', 'ax', 'ay',
+        'color', 'size', 'life', 'max_life',
+        'ring_r', 'ring_max_r', 'ring_w',
+        'x2', 'y2', 'alpha_start',
+    )
+
+    def __init__(self, ptype, **kw):
+        self.ptype      = ptype
+        self.x          = float(kw.get('x', 0))
+        self.y          = float(kw.get('y', 0))
+        self.vx         = float(kw.get('vx', 0))
+        self.vy         = float(kw.get('vy', 0))
+        self.ax         = float(kw.get('ax', 0))    # acceleration
+        self.ay         = float(kw.get('ay', 0))
+        self.color      = kw.get('color', (255, 255, 255))
+        self.size       = float(kw.get('size', 5))
+        self.life       = float(kw.get('life', 1.0))
+        self.max_life   = self.life
+        # ring
+        self.ring_r     = 0.0
+        self.ring_max_r = float(kw.get('ring_max_r', 90))
+        self.ring_w     = int(kw.get('ring_w', 3))
+        # line / beam endpoints
+        self.x2         = float(kw.get('x2', self.x))
+        self.y2         = float(kw.get('y2', self.y))
+        # flash
+        self.alpha_start = int(kw.get('alpha_start', 80))
+
+    @property
+    def alive(self):
+        return self.life > 0
+
+    def update(self, dt):
+        self.life -= dt
+        if self.life <= 0:
+            return
+        if self.ptype == 'ring':
+            prog = 1.0 - (self.life / self.max_life)   # 0 → 1
+            self.ring_r = self.ring_max_r * prog
+        elif self.ptype in ('spark', 'orb', 'ghost'):
+            self.vx += self.ax * dt
+            self.vy += self.ay * dt
+            self.x  += self.vx * dt
+            self.y  += self.vy * dt
+
+    def draw(self, surface, cam_x=0, cam_y=0):
+        if self.life <= 0:
+            return
+        frac = max(0.0, self.life / self.max_life)   # 1 → 0
+        col  = self.color
+        bright = tuple(min(255, c + 90) for c in col)
+
+        if self.ptype == 'ring':
+            sx = int(self.x - cam_x)
+            sy = int(self.y - cam_y)
+            r  = int(self.ring_r)
+            if r < 1:
+                return
+            alpha = int(255 * frac * frac)
+            # Outer glow
+            gw = max(2, self.ring_w * 3)
+            d  = (r + gw) * 2 + 4
+            gs = pygame.Surface((d, d), pygame.SRCALPHA)
+            pygame.draw.circle(gs, (*bright, alpha // 4), (d//2, d//2), r + gw, gw)
+            surface.blit(gs, (sx - d//2, sy - d//2))
+            # Core ring
+            d2 = (r + self.ring_w) * 2 + 4
+            cs = pygame.Surface((d2, d2), pygame.SRCALPHA)
+            pygame.draw.circle(cs, (*col, alpha), (d2//2, d2//2), r, self.ring_w)
+            surface.blit(cs, (sx - d2//2, sy - d2//2))
+
+        elif self.ptype == 'spark':
+            sx = int(self.x - cam_x)
+            sy = int(self.y - cam_y)
+            sz = max(1, int(self.size * frac))
+            alpha = int(255 * frac)
+            d = sz * 2 + 8
+            ps = pygame.Surface((d, d), pygame.SRCALPHA)
+            # glow
+            pygame.draw.circle(ps, (*col,   alpha // 3), (d//2, d//2), sz + 3)
+            pygame.draw.circle(ps, (*col,   alpha),      (d//2, d//2), sz)
+            pygame.draw.circle(ps, (*bright, alpha),     (d//2, d//2), max(1, sz // 2))
+            surface.blit(ps, (sx - d//2, sy - d//2))
+
+        elif self.ptype == 'orb':
+            sx = int(self.x - cam_x)
+            sy = int(self.y - cam_y)
+            sz = max(2, int(self.size * (0.4 + 0.6 * frac)))
+            alpha = int(220 * frac)
+            # outer glow
+            gr = sz * 2 + 4
+            gs2 = pygame.Surface((gr*2+4, gr*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(gs2, (*col, alpha // 3), (gr+2, gr+2), gr)
+            surface.blit(gs2, (sx - gr - 2, sy - gr - 2))
+            # core
+            d3 = sz * 2 + 6
+            ps2 = pygame.Surface((d3, d3), pygame.SRCALPHA)
+            pygame.draw.circle(ps2, (*col,    alpha),       (d3//2, d3//2), sz)
+            pygame.draw.circle(ps2, (*bright, min(255, alpha + 80)), (d3//2, d3//2), max(1, sz * 2 // 3))
+            surface.blit(ps2, (sx - d3//2, sy - d3//2))
+
+        elif self.ptype == 'ghost':
+            sx = int(self.x - cam_x)
+            sy = int(self.y - cam_y)
+            r  = int(self.size)
+            alpha = int(190 * frac * frac)
+            d4 = (r + 6) * 2
+            gs3 = pygame.Surface((d4, d4), pygame.SRCALPHA)
+            pygame.draw.circle(gs3, (*col, alpha // 2), (d4//2, d4//2), r + 5)
+            pygame.draw.circle(gs3, (*col, alpha),      (d4//2, d4//2), r)
+            surface.blit(gs3, (sx - d4//2, sy - d4//2))
+
+        elif self.ptype == 'line':
+            sx1 = int(self.x  - cam_x)
+            sy1 = int(self.y  - cam_y)
+            sx2 = int(self.x2 - cam_x)
+            sy2 = int(self.y2 - cam_y)
+            alpha = int(200 * frac)
+            w, h = surface.get_size()
+            ls = pygame.Surface((w, h), pygame.SRCALPHA)
+            lw = max(1, self.ring_w)
+            # glow layer
+            pygame.draw.line(ls, (*col, alpha // 4), (sx1, sy1), (sx2, sy2), lw * 4)
+            # core
+            pygame.draw.line(ls, (*col, alpha),       (sx1, sy1), (sx2, sy2), lw)
+            pygame.draw.line(ls, (*bright, alpha),    (sx1, sy1), (sx2, sy2), max(1, lw - 1))
+            surface.blit(ls, (0, 0))
+
+        elif self.ptype == 'beam':
+            sx1 = int(self.x  - cam_x)
+            sy1 = int(self.y  - cam_y)
+            sx2 = int(self.x2 - cam_x)
+            sy2 = int(self.y2 - cam_y)
+            alpha = int(180 * frac * frac)
+            w, h = surface.get_size()
+            bs = pygame.Surface((w, h), pygame.SRCALPHA)
+            bw = max(1, int(self.size * frac))
+            pygame.draw.line(bs, (*col, alpha // 3), (sx1, sy1), (sx2, sy2), bw * 5)
+            pygame.draw.line(bs, (*col, alpha),       (sx1, sy1), (sx2, sy2), bw * 2)
+            pygame.draw.line(bs, (*bright, alpha),    (sx1, sy1), (sx2, sy2), max(1, bw))
+            surface.blit(bs, (0, 0))
+
+        elif self.ptype == 'flash':
+            # Full-screen colour flash — x/y unused
+            alpha = int(self.alpha_start * frac * frac)
+            if alpha <= 0:
+                return
+            w, h = surface.get_size()
+            fs = pygame.Surface((w, h), pygame.SRCALPHA)
+            fs.fill((*col, alpha))
+            surface.blit(fs, (0, 0))

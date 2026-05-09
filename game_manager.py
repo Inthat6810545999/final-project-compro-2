@@ -26,7 +26,7 @@ from constants import (
 from player        import Player
 from stage         import Stage
 from enemy         import EnemyBullet
-from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal, LaserBeam
+from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal, LaserBeam, SkillParticle
 from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
                            ShopScreen, PauseScreen, GameOverScreen,
@@ -58,6 +58,9 @@ class GameManager:
         self.score    = 0
         self.kills    = 0
         self.run_time = 0.0   # seconds elapsed this run
+
+        # ── Skill VFX particle list ────────────────────────────
+        self.skill_fx: list = []   # list of SkillParticle
 
         # ── New features ──────────────────────────────────────
         self.portal          = None          # Portal object after stage cleared
@@ -709,11 +712,18 @@ class GameManager:
                     cds[i] = max(0.0, cds[i] - dt)
 
     def _handle_skill_new(self, stype, cfg):
-        """Handle the 3 new Sausage Man skills with visual effects."""
-        p = self.player
+        """Handle the 3 Sausage Man skills with rich particle VFX."""
+        import random as _rnd
+        p   = self.player
         col = cfg.get("color", (255, 255, 255))
 
-        # ── DASH ─────────────────────────────────────────────────
+        # ── Helper: spawn SkillParticle into self.skill_fx ─────
+        def sp(**kw):
+            self.skill_fx.append(SkillParticle(**kw))
+
+        # ══════════════════════════════════════════════════════
+        #  DASH
+        # ══════════════════════════════════════════════════════
         if stype == "dash":
             keys = pygame.key.get_pressed()
             from pygame.locals import K_w, K_a, K_s, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT
@@ -725,11 +735,12 @@ class GameManager:
             d = math.hypot(mdx, mdy) or 1
             mdx /= d; mdy /= d
 
-            # Spawn afterimage ghost trail at old position every 30 px
-            walls = self.stage.wall_rects
-            steps = 5
-            step_dist = 28
-            ox, oy = p.x, p.y
+            walls      = self.stage.wall_rects
+            steps      = 5
+            step_dist  = 28
+            ox, oy     = p.x, p.y
+            trail_pts  = []
+
             for s in range(1, steps + 1):
                 tx = ox + mdx * step_dist * s
                 ty = oy + mdy * step_dist * s
@@ -737,51 +748,185 @@ class GameManager:
                 if not any(w.left < tx + r and w.right > tx - r and
                            w.top  < ty + r and w.bottom > ty - r for w in walls):
                     p.x, p.y = tx, ty
+                    trail_pts.append((tx, ty))
                 else:
                     break
-                # Ghost trail particle
-                self._add_fx(tx, ty, "·", col, 20)
 
-            p.iframe_timer = 0.3   # brief invincibility during dash
-            self._add_fx(p.x, p.y - 36, "DASH!", col, 22)
+            p.iframe_timer = 0.45
 
-        # ── STAR SPREAD ──────────────────────────────────────────
+            # ── VFX: ghost afterimages along trail ────────────
+            DASH_COL  = (60, 220, 255)
+            DASH_COL2 = (160, 255, 255)
+            for i, (tx, ty) in enumerate(trail_pts):
+                frac = (i + 1) / max(1, len(trail_pts))
+                sp(ptype='ghost', x=tx, y=ty, color=DASH_COL,
+                   size=p.RADIUS * (0.6 + 0.4 * frac), life=0.38 + frac * 0.22)
+
+            # ── VFX: motion-blur line from origin to destination ──
+            if trail_pts:
+                dx_e, dy_e = p.x - ox, p.y - oy
+                perp_x, perp_y = -mdy * 6, mdx * 6
+                for off in (-1, 0, 1):
+                    ox2 = ox + perp_x * off * 0.5
+                    oy2 = oy + perp_y * off * 0.5
+                    sp(ptype='line', x=ox2, y=oy2, x2=ox2 + dx_e, y2=oy2 + dy_e,
+                       color=DASH_COL, ring_w=3 - abs(off), life=0.28)
+
+            # ── VFX: shockwave ring at destination ────────────
+            sp(ptype='ring', x=p.x, y=p.y, color=DASH_COL,
+               ring_max_r=75, ring_w=4, life=0.45)
+            sp(ptype='ring', x=p.x, y=p.y, color=DASH_COL2,
+               ring_max_r=50, ring_w=2, life=0.30)
+
+            # ── VFX: speed-burst sparks shooting backward ─────
+            back_angle = math.atan2(mdy, mdx) + math.pi
+            for i in range(18):
+                angle_offset = _rnd.uniform(-0.6, 0.6)
+                a = back_angle + angle_offset
+                spd = _rnd.uniform(80, 220)
+                sz  = _rnd.uniform(3, 7)
+                sp(ptype='spark', x=p.x, y=p.y,
+                   vx=math.cos(a) * spd, vy=math.sin(a) * spd,
+                   ay=60, color=DASH_COL if _rnd.random() > 0.4 else DASH_COL2,
+                   size=sz, life=_rnd.uniform(0.20, 0.45))
+
+            # ── VFX: brief white-cyan screen flash ────────────
+            sp(ptype='flash', color=(80, 220, 255), alpha_start=55, life=0.14)
+
+            # ── Screen shake ──────────────────────────────────
+            self.shake_timer = 0.14
+            self.shake_mag   = 5
+            self._add_fx(p.x, p.y - 44, "DASH!", DASH_COL, 22)
+
+        # ══════════════════════════════════════════════════════
+        #  STAR SPREAD
+        # ══════════════════════════════════════════════════════
         elif stype == "star_spread":
             from bullet import Bullet
-            angle = p.facing_angle
-            dmg, crit = p.calc_damage()
+            angle    = p.facing_angle
+            dmg, _   = p.calc_damage()
             star_dmg = int(dmg * 1.4)
-            spd = (p.get_bullet_speed() or 7) * 1.1
-            star_col = (255, 220, 60)
+            spd      = (p.get_bullet_speed() or 7) * 1.1
+            STAR_COL  = (255, 220, 50)
+            STAR_COL2 = (255, 160, 30)
+            STAR_COL3 = (255, 255, 160)
+
             spread_angles = [angle - math.radians(28), angle, angle + math.radians(28)]
             barrel_offset = p.RADIUS + 16
             for a in spread_angles:
                 bdx = math.cos(a); bdy = math.sin(a)
                 bx = p.x + bdx * barrel_offset
                 by = p.y + bdy * barrel_offset
-                b = Bullet(bx, by, bdx, bdy, spd, star_dmg,
-                           pierce=False, is_crit=False, color=star_col, size=10)
+                b  = Bullet(bx, by, bdx, bdy, spd, star_dmg,
+                            pierce=False, is_crit=False, color=STAR_COL, size=10)
                 self.bullets.append(b)
-            # Sparkle FX: ring of star texts
-            for i in range(8):
-                a2 = math.tau / 8 * i
-                fx_x = p.x + math.cos(a2) * 40
-                fx_y = p.y + math.sin(a2) * 40
-                self._add_fx(fx_x, fx_y, "+EXP", (255, 240, 80), 14)
-            self._add_fx(p.x, p.y - 40, "STAR SHOT!", col, 22)
 
-        # ── RAPID FIRE (FRENZY) ───────────────────────────────────
+            # ── VFX: golden starburst rings ───────────────────
+            sp(ptype='ring', x=p.x, y=p.y, color=STAR_COL,
+               ring_max_r=100, ring_w=5, life=0.50)
+            sp(ptype='ring', x=p.x, y=p.y, color=STAR_COL2,
+               ring_max_r=68,  ring_w=3, life=0.38)
+            sp(ptype='ring', x=p.x, y=p.y, color=STAR_COL3,
+               ring_max_r=40,  ring_w=2, life=0.24)
+
+            # ── VFX: light beams along each bullet path ───────
+            beam_len = 380
+            for a in spread_angles:
+                sp(ptype='beam',
+                   x=p.x, y=p.y,
+                   x2=p.x + math.cos(a) * beam_len,
+                   y2=p.y + math.sin(a) * beam_len,
+                   color=STAR_COL, size=8, life=0.22)
+
+            # ── VFX: star sparks radiate in all directions ────
+            for i in range(24):
+                a2  = math.tau / 24 * i + _rnd.uniform(-0.1, 0.1)
+                spd2 = _rnd.uniform(60, 240)
+                sz   = _rnd.uniform(3, 9)
+                sc   = _rnd.choice([STAR_COL, STAR_COL2, STAR_COL3])
+                sp(ptype='spark', x=p.x, y=p.y,
+                   vx=math.cos(a2) * spd2, vy=math.sin(a2) * spd2,
+                   ay=40, color=sc, size=sz,
+                   life=_rnd.uniform(0.25, 0.55))
+
+            # ── VFX: golden orbs drifting outward ────────────
+            for i in range(8):
+                a3  = math.tau / 8 * i
+                spd3 = _rnd.uniform(30, 80)
+                sp(ptype='orb', x=p.x, y=p.y,
+                   vx=math.cos(a3) * spd3, vy=math.sin(a3) * spd3,
+                   color=STAR_COL2, size=_rnd.uniform(6, 12),
+                   life=_rnd.uniform(0.35, 0.60))
+
+            # ── VFX: golden screen flash ──────────────────────
+            sp(ptype='flash', color=(255, 200, 30), alpha_start=65, life=0.18)
+
+            # ── Screen shake ──────────────────────────────────
+            self.shake_timer = 0.18
+            self.shake_mag   = 7
+            self._add_fx(p.x, p.y - 44, "STAR SHOT!", STAR_COL, 24)
+
+        # ══════════════════════════════════════════════════════
+        #  RAPID FIRE  (FRENZY)
+        # ══════════════════════════════════════════════════════
         elif stype == "rapid_fire":
             dur = cfg.get("duration", 3.0)
-            p._frenzy_timer   = dur
-            p._frenzy_mult    = 2.5
-            # Burst of lightning sparks around player
+            p._frenzy_timer = dur
+            p._frenzy_mult  = 2.5
+
+            FRENZY_COL  = (255, 100, 0)
+            FRENZY_COL2 = (255, 200, 0)
+            FRENZY_COL3 = (255, 50,  50)
+
+            # ── VFX: triple expanding rings ───────────────────
+            for r_max, rw, lt in [(120, 6, 0.55), (85, 4, 0.40), (50, 2, 0.28)]:
+                sp(ptype='ring', x=p.x, y=p.y, color=FRENZY_COL,
+                   ring_max_r=r_max, ring_w=rw, life=lt)
+            sp(ptype='ring', x=p.x, y=p.y, color=FRENZY_COL2,
+               ring_max_r=100, ring_w=3, life=0.48)
+
+            # ── VFX: lightning-style jagged lines ────────────
+            for i in range(14):
+                base_a = math.tau / 14 * i
+                # Each "lightning bolt" = 2 connected line segments with jitter
+                mid_x = p.x + math.cos(base_a + _rnd.uniform(-0.3, 0.3)) * _rnd.uniform(30, 55)
+                mid_y = p.y + math.sin(base_a + _rnd.uniform(-0.3, 0.3)) * _rnd.uniform(30, 55)
+                end_x = p.x + math.cos(base_a + _rnd.uniform(-0.2, 0.2)) * _rnd.uniform(70, 110)
+                end_y = p.y + math.sin(base_a + _rnd.uniform(-0.2, 0.2)) * _rnd.uniform(70, 110)
+                lc    = _rnd.choice([FRENZY_COL, FRENZY_COL2])
+                sp(ptype='line', x=p.x,  y=p.y,  x2=mid_x, y2=mid_y,
+                   color=lc, ring_w=3, life=_rnd.uniform(0.18, 0.35))
+                sp(ptype='line', x=mid_x, y=mid_y, x2=end_x, y2=end_y,
+                   color=lc, ring_w=2, life=_rnd.uniform(0.14, 0.28))
+
+            # ── VFX: fire sparks explode outward ─────────────
+            for i in range(32):
+                a4   = _rnd.uniform(0, math.tau)
+                spd4 = _rnd.uniform(80, 300)
+                sz4  = _rnd.uniform(3, 10)
+                sc   = _rnd.choice([FRENZY_COL, FRENZY_COL2, FRENZY_COL3])
+                sp(ptype='spark', x=p.x, y=p.y,
+                   vx=math.cos(a4) * spd4, vy=math.sin(a4) * spd4,
+                   ay=80, color=sc, size=sz4,
+                   life=_rnd.uniform(0.20, 0.60))
+
+            # ── VFX: large fire orbs drift outward ────────────
             for i in range(10):
-                a3 = math.tau / 10 * i
-                fx_x = p.x + math.cos(a3) * 48
-                fx_y = p.y + math.sin(a3) * 48
-                self._add_fx(fx_x, fx_y, "!", col, 19)
-            self._add_fx(p.x, p.y - 42, "FRENZY! 3s", col, 24)
+                a5   = _rnd.uniform(0, math.tau)
+                spd5 = _rnd.uniform(20, 70)
+                sz5  = _rnd.uniform(8, 18)
+                sp(ptype='orb', x=p.x, y=p.y,
+                   vx=math.cos(a5) * spd5, vy=math.sin(a5) * spd5,
+                   color=_rnd.choice([FRENZY_COL, FRENZY_COL2]),
+                   size=sz5, life=_rnd.uniform(0.40, 0.80))
+
+            # ── VFX: intense red-orange screen flash ──────────
+            sp(ptype='flash', color=(255, 80, 0), alpha_start=90, life=0.22)
+
+            # ── Screen shake ──────────────────────────────────
+            self.shake_timer = 0.25
+            self.shake_mag   = 10
+            self._add_fx(p.x, p.y - 46, "FRENZY!", FRENZY_COL2, 28)
 
     def _handle_skill(self, skill):
         """Legacy skill handler kept for compatibility."""
@@ -1001,6 +1146,7 @@ class GameManager:
         self.e_bullets = []
         self.drops     = []
         self.fx        = []
+        self.skill_fx  = []
         self.portal    = None   # clear portal from previous stage
         self._last_enemy_pos = (float(start_room.cx), float(start_room.cy))
         # Assign each enemy a home_room so they stay in their own room
@@ -1020,7 +1166,7 @@ class GameManager:
             if isinstance(e, _BE):
                 self.boss_entity = e
                 break
-        # ── Fallback: ถ้าหาบอสไม่เจอ (เช่น boss_room ไม่ถูก assign) ให้ force-spawn ──
+        # ── Fallback: if boss not found (e.g. boss_room was not assigned) force-spawn ──
         if self.boss_entity is None:
             from constants import STAGE_CONFIGS
             from enemy import make_enemy
@@ -1028,7 +1174,7 @@ class GameManager:
             boss_type = cfg.get("boss", "Elder Treant")
             boss_room = self.stage.boss_room
             if boss_room is None:
-                # เลือกห้องที่ใหญ่สุด — แต่ห้ามเป็น rooms[0] (spawn room)
+                # pick the largest room — but not rooms[0] (spawn room)
                 non_start = self.stage.rooms[1:]
                 candidates = non_start if non_start else self.stage.rooms
                 boss_room = max(candidates, key=lambda r: r.rect.w * r.rect.h)
@@ -1134,6 +1280,12 @@ class GameManager:
     def _add_fx(self, x, y, msg, color, size=18):
         self.fx.append(FloatingText(x, y, msg, color, size))
 
+    def _update_skill_fx(self, dt):
+        """Tick and prune SkillParticle list."""
+        for p in self.skill_fx:
+            p.update(dt)
+        self.skill_fx = [p for p in self.skill_fx if p.alive]
+
     # ── Update ───────────────────────────────────────────────
     def _update(self, dt, mouse_pos):
         if self.state != STATE_PLAYING:
@@ -1161,6 +1313,7 @@ class GameManager:
         # Tick run timer
         self.run_time += dt
         self._tick_skill_cd(dt)
+        self._update_skill_fx(dt)
         self.sfx.update(dt)
 
         world_mouse = (mouse_pos[0] + cam_x, mouse_pos[1] + cam_y)
@@ -1279,7 +1432,7 @@ class GameManager:
                 self._pan_origin        = (p.x, p.y)   # remember where player was
                 self._pan_arrived_shake = False
             else:
-                # แสดง warning เมื่อเข้าใกล้ประตู boss room ที่ยัง locked
+                # show warning when player approaches the still-locked boss door
                 if boss_room.door_rects:
                     for dr in boss_room.door_rects:
                         if math.hypot(p.x - dr.centerx, p.y - dr.centery) < 80:
@@ -1303,7 +1456,7 @@ class GameManager:
         if getattr(self, 'boss_door_arrow_t', 0) > 0:
             self.boss_door_arrow_t = max(0.0, self.boss_door_arrow_t - dt)
 
-        # ── ห้องใครห้องมัน: keep enemies inside their home room ──
+        # ── Room ownership: keep enemies confined to their home room ──
         from constants import TILE as _TILE
         for e in self.enemies:
             hr = getattr(e, "home_room", None)
@@ -1464,7 +1617,7 @@ class GameManager:
 
                         p.shoot_cooldown = (1.0 / max(0.1, p.get_fire_rate())) / frenzy_mult
 
-                        # ── เสียงยิง ───────────────────────────────────────
+                        # ── Shoot sound ──────────────────────────────────────
                         self.sfx.play_shoot(wpn)
 
                         # ── Per-weapon screen shake ────────────────────
@@ -1581,7 +1734,7 @@ class GameManager:
                     "exp": e.exp_reward,
                     "is_boss": isinstance(e, __import__("enemy").BossEnemy)
                 })
-                # ── เสียงศัตรูตาย ──────────────────────────────────
+                # ── Enemy death sound ────────────────────────────────
                 from enemy import BossEnemy as _BE
                 if isinstance(e, _BE):
                     self.sfx.play("boss_die")
@@ -2103,6 +2256,11 @@ class GameManager:
                 self.portal.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
             self.player.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
 
+            # ── Skill VFX world particles (after player) ───────
+            for sfx_p in self.skill_fx:
+                if sfx_p.ptype != 'flash':
+                    sfx_p.draw(self.screen, self.stage.cam_x, self.stage.cam_y)
+
             self.stage.cam_x = orig_cam_x
             self.stage.cam_y = orig_cam_y
 
@@ -2110,9 +2268,14 @@ class GameManager:
                      self.stage_idx, len(STAGE_CONFIGS), self.run_time)
             self.stage.draw_minimap(self.screen, self.player.x, self.player.y)
 
+            # ── Skill VFX screen-space flash (on top of everything) ──
+            for sfx_p in self.skill_fx:
+                if sfx_p.ptype == 'flash':
+                    sfx_p.draw(self.screen)
+
             # ── Boss UI & cinematics (drawn on top of HUD) ─────
-            # HP bar แสดงเฉพาะหลังจากเข้าห้องบอสแล้วเท่านั้น (boss.activated = True)
-            # ซ่อนระหว่าง spawn cinematic และ ready overlay เพื่อไม่ให้ซ้อนกัน
+            # HP bar is shown only after entering the boss room (boss.activated = True)
+            # hidden during spawn cinematic and ready overlay to avoid overlap
             in_boss_cinematic = self.boss_spawn_timer > 0 or self.boss_ready_timer > 0
             if (self.boss_entity and self.boss_entity.alive
                     and getattr(self.boss_entity, 'activated', False)

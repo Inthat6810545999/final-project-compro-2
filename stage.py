@@ -1064,7 +1064,7 @@ class Stage:
                     self.wall_rects.append(pygame.Rect(tx*TILE, ty*TILE, TILE, TILE))
 
         self.rooms = [Room(r) for r in room_rects]
-        # boss_room = spoke ที่เลือกไว้ก่อนแล้ว (ไม่มีห้องลูก)
+        # boss_room = the pre-selected spoke (no child rooms branch from it)
         primary_room_objs = [
             rm for rm in self.rooms
             if any(rm.rect == pr for pr in primary_spoke_rects)
@@ -1181,7 +1181,7 @@ class Stage:
             if room.is_boss:
                 bx, by = room.cx, room.cy
                 enemies.append(make_enemy(self.boss_type, bx, by, stage_level))
-                # ไม่ spawn mob เพิ่มในห้องบอส — บอสสู้คนเดียว
+                # no extra mobs spawned in boss room — boss fights alone
             elif room is elite_room and elite_type:
                 enemies.append(make_enemy(elite_type, room.cx, room.cy, stage_level))
                 for pt in room.get_spawn_points(max(1, count-1)):
@@ -1342,7 +1342,7 @@ class Stage:
             pygame.draw.rect(mini_surf,bcol,(rx,ry,rw,rh),1,border_radius=2)
             cx_m=rx+rw//2; cy_m=ry+rh//2
             if boss_cleared and rw>=5:
-                # ✔ ใหญ่สีเขียวสว่าง พร้อม outline
+                # ✔ large bright green checkmark with outline
                 pts=[(cx_m-3,cy_m+1),(cx_m-1,cy_m+3),(cx_m+4,cy_m-3)]
                 pygame.draw.lines(mini_surf,(0,80,20,255),False,pts,2)
                 pygame.draw.lines(mini_surf,(120,255,140,255),False,pts,1)

@@ -1363,11 +1363,11 @@ class ShootingRangeScreen:
             w = Weapon(entry[0],entry[1],entry[2],entry[3],
                        entry[4],entry[5],entry[6],"Any",entry[8],effect)
             self._weapon_list.append(w)
-        # armor list: None (ไม่สวม) + ทุกชุดใน pool
+        # armor list: None (unequipped) + all sets in pool
         self._armor_list = [None] + [
             Armor(e[0], e[1], e[2], e[3], e[4]) for e in ARMOR_POOL
         ]
-        self.arm_idx = 0   # 0 = ไม่สวมเกราะ
+        self.arm_idx = 0   # 0 = no armor equipped
         self.player = None
         self._reset()
 

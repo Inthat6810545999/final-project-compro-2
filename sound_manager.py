@@ -1,11 +1,11 @@
 """
 sound_manager.py  –  SoundManager (Procedural audio via numpy + pygame.sndarray)
-ไม่ต้องใช้ไฟล์เสียงภายนอก – สร้างเสียงทุกอย่างด้วย waveform synthesis
+No external audio files required – all sounds synthesized via waveform synthesis
 
-แก้ไข:
-  - อ่าน sample rate จาก pygame.mixer จริงๆ (ไม่ hardcode 44100)
-  - ถ้า mixer ไม่พร้อม → ทำงานเป็น no-op เงียบๆ ไม่ crash
-  - ปรับ array format ให้ตรงกับ mixer ที่ init ไว้
+Changes:
+  - Reads actual sample rate from pygame.mixer (not hardcoded 44100)
+  - If mixer is not ready → runs as silent no-op without crashing
+  - Adjusts array format to match the initialized mixer settings
 """
 
 import numpy as np
@@ -65,7 +65,7 @@ def _sweep(f0, f1, n, sr):
 
 
 # ════════════════════════════════════════════════════════════
-#  เสียงแต่ละประเภท
+#  Sound effects by type
 # ════════════════════════════════════════════════════════════
 
 def _build_shoot(sr, ch):
@@ -205,10 +205,10 @@ def _build_heal(sr, ch):
 
 class SoundManager:
     """
-    สร้างและเล่นเสียงทั้งหมดด้วย procedural synthesis
-    ถ้าไม่มี audio device → ทำงานเป็น no-op ไม่ crash
+    Generates and plays all sounds via procedural synthesis.
+    If no audio device is present → runs as a silent no-op without crashing.
 
-    วิธีใช้:
+    Usage:
         sfx = SoundManager()
         sfx.play("shoot")
     """
@@ -261,24 +261,24 @@ class SoundManager:
         self._sounds: dict[str, pygame.mixer.Sound] = {}
         self._cooldowns: dict[str, float] = {k: 0.0 for k in self._BUILDERS}
 
-        # ── ตรวจและ init mixer ────────────────────────────────
+        # ── Check and initialize mixer ──────────────────────────
         init_info = pygame.mixer.get_init()
         if not init_info:
             try:
                 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
                 init_info = pygame.mixer.get_init()
             except Exception as e:
-                print(f"[SoundManager] ⚠ init ล้มเหลว: {e} – ไม่มีเสียง")
+                print(f"[SoundManager] ⚠ init failed: {e} – no audio")
                 return
 
         if not init_info:
-            print("[SoundManager] ⚠ ไม่พบ audio device – ไม่มีเสียง")
+            print("[SoundManager] ⚠ No audio device found – running silently")
             return
 
         sr, size, ch = init_info
         print(f"[SoundManager] ✅ mixer ready – {sr} Hz / {'stereo' if ch==2 else 'mono'}")
 
-        # ── สร้างเสียงทุกตัวด้วย sr/ch จริง ──────────────────
+        # ── Build all sounds using actual sr/ch values ──────────
         for name, builder in self._BUILDERS.items():
             try:
                 self._sounds[name] = builder(sr, ch)
@@ -287,7 +287,7 @@ class SoundManager:
 
         if self._sounds:
             self._enabled = True
-            print(f"[SoundManager] โหลดสำเร็จ {len(self._sounds)}/{len(self._BUILDERS)} เสียง")
+            print(f"[SoundManager] Loaded {len(self._sounds)}/{len(self._BUILDERS)} sounds successfully")
 
     # ── Public API ────────────────────────────────────────────
 
