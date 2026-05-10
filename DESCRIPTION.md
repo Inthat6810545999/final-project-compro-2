@@ -31,9 +31,19 @@ The game draws inspiration from the mobile game *Soul Knight*, emphasizing weapo
 
 **Screenshots:**
 
-| Gameplay | Statistics Dashboard |
+| Gameplay |
 |---|---|
-| ![Gameplay](screenshots/gameplay/gameplay_01.png) | ![Dashboard](screenshots/visualization/dashboard_overview.png) |
+  ![Mainmenu](screenshots/gameplay/main_menu.jpg)
+  ![Combat_fight](screenshots/gameplay/monster_fight.jpg)
+  ![Combat_fight2](screenshots/gameplay/combat_fight.jpg)
+  ![Boss_room](gameplay/boss_room.jpeg)
+  ![Boss_room2](screenshots/gameplay/boss_room2.jpeg)
+  ![Boss_fight](screenshots/gameplay/boss_fight.jpeg)
+  ![Boss_fight2](screenshots/gameplay/boss_fight2.jpeg)
+  ![Boss_defeated](screenshots/gameplay/boss_defeated.jpeg)
+  ![Shop_screen](screenshots/gameplay/shop_screen.jpeg)
+  ![Shooting_range](screenshots/gameplay/shooting_range.jpeg)
+
 
 > See the [`screenshots/`](screenshots/) folder for the full set of gameplay and visualization screenshots.
 
