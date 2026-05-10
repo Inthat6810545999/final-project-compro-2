@@ -41,11 +41,26 @@ The game draws inspiration from the mobile game *Soul Knight*, emphasizing weapo
   ![Boss_fight](screenshots/gameplay/boss_fight.jpeg)
   ![Boss_fight2](screenshots/gameplay/boss_fight2.jpeg)
   ![Boss_defeated](screenshots/gameplay/boss_defeated.jpeg)
+  ![Pause](screenshots/gameplay/pause.jpeg)
+  ![Inventory](screenshots/gameplay/inventory.jpeg)
   ![Shop_screen](screenshots/gameplay/shop_screen.jpeg)
   ![Shooting_range](screenshots/gameplay/shooting_range.jpeg)
+  ![Game_over](screenshots/gameplay/game_over.jpeg)
 
+  ### Data Visualization
+![Dashboard Overview](screenshots/visualization/dashboard_overview.png)
 
-> See the [`screenshots/`](screenshots/) folder for the full set of gameplay and visualization screenshots.
+![Score per Run](screenshots/visualization/score_per_run.png.jpg)
+
+![Enemies Defeated Histogram](screenshots/visualization/enemies_defeated_hist.png)
+
+![Avg Score by Class](screenshots/visualization/avg_score_by_class.png)
+
+![Run Duration Histogram](screenshots/visualization/run_duration_hist.png)
+
+![Stage Reached Bar Chart](screenshots/visualization/stage_reached_bar.png)
+
+![Kills vs Damage Scatter](screenshots/visualization/kills_vs_damage_scatter.png)
 
 **Proposal:** [Project Proposal (PDF)](proposal.pdf)
 
