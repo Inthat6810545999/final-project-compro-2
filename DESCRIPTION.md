@@ -62,10 +62,10 @@ The game draws inspiration from the mobile game *Soul Knight*, emphasizing weapo
 
 ![Kills vs Damage Scatter](screenshots/visualization/kills_vs_damage_scatter.png)
 
-**Proposal:** [Project Proposal (PDF)](proposal.pdf)
+**Proposal:** [Project Proposal (PDF)](./Project_proposal.pdf)
 
-**YouTube Presentation:** [▶ Watch on YouTube](https://www.youtube.com/watch?v=REPLACE_WITH_YOUR_VIDEO_ID)
-> *(~7 min) — Covers game demo, OOP class design, and data visualization walkthrough.*
+**YouTube Presentation:** [▶ Watch on YouTube](https://youtu.be/UkT5ptc7oxI)
+
 
 ---
 
