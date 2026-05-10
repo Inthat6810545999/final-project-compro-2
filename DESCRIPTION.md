@@ -91,7 +91,7 @@ The project also addresses a practical gap: many game projects use pre-made asse
 
 ## 3. UML Class Diagram
 
-The UML class diagram is attached in **[UML.pdf](UML.pdf)** in the project root.
+The UML class diagram is attached in **[UML.pdf](./UML.pdf)** in the project root.
 
 **Summary of key relationships:**
 
