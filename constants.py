@@ -62,13 +62,13 @@ STATE_LEVEL_UP   = "level_up"
 CLASSES = {
     "Sausage Man": {
         "color": (240, 60, 120),
-        "base_hp": 130,
-        "max_armor": 80,
-        "max_mana": 300,
-        "speed": 3.8,
-        "base_damage": 16,
-        "fire_rate": 0.75,
-        "bullet_speed": 10,
+        "base_hp":      150,    # ↑ 130→150  (more survivability)
+        "max_armor":     85,    # ↑ 80→85
+        "max_mana":     320,    # ↑ 300→320  (more skill usage)
+        "speed":        3.8,
+        "base_damage":   18,    # ↑ 16→18    (early game feels better)
+        "fire_rate":    0.75,
+        "bullet_speed":  10,
         "description": "The legendary Sausage Man. Ready for anything.",
         "passive": "Sausage Spirit: Balanced stats. Never gives up.",
         "weapon_class": "Any",
@@ -86,28 +86,33 @@ STAGE_CONFIGS = [
 
 # ── Enemy stats ───────────────────────────────────────────────
 ENEMY_DATA = {
-    "Slime":      {"hp": 22,  "atk": 4,  "speed": 1.3, "exp": 10,  "color": GREEN,      "size": 20, "ai": "shoot", "range": 180, "shoot": True},
-    "Wolf":       {"hp": 35,  "atk": 7,  "speed": 2.2, "exp": 15,  "color": GRAY,       "size": 22, "ai": "shoot", "range": 160, "shoot": True},
-    "Skeleton":   {"hp": 38,  "atk": 9,  "speed": 1.5, "exp": 18,  "color": WHITE,      "size": 22, "ai": "shoot", "range": 200, "shoot": True},
-    "Bat":        {"hp": 18,  "atk": 6,  "speed": 2.8, "exp": 12,  "color": PURPLE,     "size": 16, "ai": "shoot", "range": 150, "shoot": True},
-    "FireImp":    {"hp": 45,  "atk": 10, "speed": 2.0, "exp": 22,  "color": ORANGE,     "size": 20, "ai": "shoot", "range": 200, "shoot": True},
-    "Golem":      {"hp": 100, "atk": 16, "speed": 0.9, "exp": 30,  "color": BROWN,      "size": 30, "ai": "shoot", "range": 140, "shoot": True},
-    "Harpy":      {"hp": 42,  "atk": 11, "speed": 3.2, "exp": 25,  "color": CYAN,       "size": 20, "ai": "shoot", "range": 180, "shoot": True},
-    "StormMage":  {"hp": 55,  "atk": 14, "speed": 1.4, "exp": 32,  "color": LIGHT_BLUE, "size": 22, "ai": "shoot", "range": 250, "shoot": True},
-    "EliteHybrid":{"hp": 100, "atk": 22, "speed": 2.8, "exp": 40,  "color": RED,        "size": 24, "ai": "shoot", "range": 200, "shoot": True},
-    "Wraith":     {"hp": 85,  "atk": 20, "speed": 2.0, "exp": 35,  "color": PURPLE,     "size": 22, "ai": "shoot", "range": 190, "shoot": True},
-    # ── Elite Shooters ────────────────────────────────────────────
-    "GunnerElite":  {"hp": 120, "atk": 16, "speed": 1.6, "exp": 80,  "color": (255, 80,  180), "size": 26, "ai": "elite_shoot", "range": 300, "shoot": True, "elite": True},
-    "SniperElite":  {"hp": 95,  "atk": 22, "speed": 1.2, "exp": 90,  "color": (80,  240, 255), "size": 24, "ai": "elite_shoot", "range": 380, "shoot": True, "elite": True},
-    "BurstElite":   {"hp": 140, "atk": 12, "speed": 2.0, "exp": 85,  "color": (255, 180, 50),  "size": 26, "ai": "elite_shoot", "range": 260, "shoot": True, "elite": True},
-    "MissileElite": {"hp": 160, "atk": 18, "speed": 1.4, "exp": 95,  "color": (180, 60,  255), "size": 28, "ai": "elite_shoot", "range": 320, "shoot": True, "elite": True},
-    "OmniElite":    {"hp": 200, "atk": 20, "speed": 1.8, "exp": 110, "color": (255, 60,  60),  "size": 30, "ai": "elite_shoot", "range": 350, "shoot": True, "elite": True},
-    # ── Bosses ────────────────────────────────────────────────────
-    "Elder Treant":     {"hp": 280,  "atk": 18, "speed": 1.0, "exp": 180, "color": DARK_GREEN, "size": 50, "ai": "boss", "range": 180, "shoot": True},
-    "Bone Overlord":    {"hp": 380,  "atk": 22, "speed": 1.3, "exp": 220, "color": WHITE,      "size": 50, "ai": "boss", "range": 200, "shoot": True},
-    "Lava Titan":       {"hp": 550,  "atk": 30, "speed": 1.0, "exp": 280, "color": ORANGE,     "size": 55, "ai": "boss", "range": 220, "shoot": True},
-    "Storm Sovereign":  {"hp": 700,  "atk": 36, "speed": 1.6, "exp": 340, "color": CYAN,       "size": 55, "ai": "boss", "range": 250, "shoot": True},
-    "Demon King Baldr": {"hp": 1000, "atk": 48, "speed": 1.8, "exp": 600, "color": PURPLE,     "size": 60, "ai": "boss", "range": 280, "shoot": True},
+    # ── Stage 1: Forest ── light intro, forgiving
+    "Slime":       {"hp": 28,  "atk": 5,  "speed": 1.3, "exp": 12,  "color": GREEN,      "size": 20, "ai": "shoot", "range": 180, "shoot": True},
+    "Wolf":        {"hp": 42,  "atk": 8,  "speed": 2.2, "exp": 18,  "color": GRAY,       "size": 22, "ai": "shoot", "range": 160, "shoot": True},
+    # ── Stage 2: Dungeon ── moderate, punishes sloppy play
+    "Skeleton":    {"hp": 52,  "atk": 11, "speed": 1.6, "exp": 22,  "color": WHITE,      "size": 22, "ai": "shoot", "range": 200, "shoot": True},
+    "Bat":         {"hp": 24,  "atk": 7,  "speed": 3.0, "exp": 14,  "color": PURPLE,     "size": 16, "ai": "shoot", "range": 150, "shoot": True},
+    # ── Stage 3: Volcano ── tanky + hard hits
+    "FireImp":     {"hp": 62,  "atk": 13, "speed": 2.0, "exp": 26,  "color": ORANGE,     "size": 20, "ai": "shoot", "range": 200, "shoot": True},
+    "Golem":       {"hp": 130, "atk": 20, "speed": 0.9, "exp": 36,  "color": BROWN,      "size": 30, "ai": "shoot", "range": 140, "shoot": True},
+    # ── Stage 4: Sky Citadel ── fast + high damage
+    "Harpy":       {"hp": 68,  "atk": 15, "speed": 3.2, "exp": 30,  "color": CYAN,       "size": 20, "ai": "shoot", "range": 180, "shoot": True},
+    "StormMage":   {"hp": 78,  "atk": 18, "speed": 1.4, "exp": 38,  "color": LIGHT_BLUE, "size": 22, "ai": "shoot", "range": 260, "shoot": True},
+    # ── Stage 5: Final Chamber ── elite-tier mobs
+    "EliteHybrid": {"hp": 130, "atk": 26, "speed": 2.8, "exp": 50,  "color": RED,        "size": 24, "ai": "shoot", "range": 210, "shoot": True},
+    "Wraith":      {"hp": 105, "atk": 23, "speed": 2.1, "exp": 44,  "color": PURPLE,     "size": 22, "ai": "shoot", "range": 200, "shoot": True},
+    # ── Elite Shooters (1 per stage, sub-boss tier) ──────────────────────
+    "GunnerElite":  {"hp": 160, "atk": 19, "speed": 1.6, "exp": 95,  "color": (255, 80,  180), "size": 26, "ai": "elite_shoot", "range": 300, "shoot": True, "elite": True},
+    "SniperElite":  {"hp": 130, "atk": 26, "speed": 1.2, "exp": 105, "color": (80,  240, 255), "size": 24, "ai": "elite_shoot", "range": 400, "shoot": True, "elite": True},
+    "BurstElite":   {"hp": 185, "atk": 15, "speed": 2.0, "exp": 100, "color": (255, 180, 50),  "size": 26, "ai": "elite_shoot", "range": 270, "shoot": True, "elite": True},
+    "MissileElite": {"hp": 210, "atk": 21, "speed": 1.4, "exp": 115, "color": (180, 60,  255), "size": 28, "ai": "elite_shoot", "range": 330, "shoot": True, "elite": True},
+    "OmniElite":    {"hp": 260, "atk": 24, "speed": 1.8, "exp": 140, "color": (255, 60,  60),  "size": 30, "ai": "elite_shoot", "range": 360, "shoot": True, "elite": True},
+    # ── Bosses ── designed to be epic, multi-phase feeling fights ────────
+    "Elder Treant":     {"hp": 360,  "atk": 20, "speed": 1.0, "exp": 210, "color": DARK_GREEN, "size": 50, "ai": "boss", "range": 180, "shoot": True},
+    "Bone Overlord":    {"hp": 500,  "atk": 25, "speed": 1.3, "exp": 260, "color": WHITE,      "size": 50, "ai": "boss", "range": 210, "shoot": True},
+    "Lava Titan":       {"hp": 720,  "atk": 33, "speed": 1.0, "exp": 330, "color": ORANGE,     "size": 55, "ai": "boss", "range": 230, "shoot": True},
+    "Storm Sovereign":  {"hp": 960,  "atk": 39, "speed": 1.6, "exp": 420, "color": CYAN,       "size": 55, "ai": "boss", "range": 260, "shoot": True},
+    "Demon King Baldr": {"hp": 1500, "atk": 50, "speed": 1.8, "exp": 750, "color": PURPLE,     "size": 60, "ai": "boss", "range": 290, "shoot": True},
 }
 
 # ── Item pools ───────────────────────────────────────────────
@@ -221,25 +226,25 @@ WEAPON_POOL = [
 
 ARMOR_POOL = [
     # (name, defense, rarity, color, description)
-    ("Cloth Robe",    3,  "Common",    LIGHT_GRAY, "Light cloth armor."),
-    ("Leather Armor", 6,  "Common",    BROWN,      "Basic leather protection."),
-    ("Chainmail",     10, "Rare",      GRAY,       "Metal chain links."),
-    ("Plate Armor",   15, "Rare",      LIGHT_GRAY, "Heavy steel plate."),
-    ("Shadow Cloak",  18, "Epic",      PURPLE,     "+20 AGI, dodge 10%."),
-    ("Dragon Scale",  25, "Epic",      ORANGE,     "Fire resistance +30%."),
-    ("Aegis Plate",   35, "Legendary", GOLD,       "Blocks 1 hit every 10 sec."),
-    ("Void Robe",     28, "Legendary", PURPLE,     "+50% spell power."),
+    ("Cloth Robe",    4,  "Common",    LIGHT_GRAY, "Light cloth armor."),
+    ("Leather Armor", 8,  "Common",    BROWN,      "Basic leather protection."),
+    ("Chainmail",     13, "Rare",      GRAY,       "Metal chain links."),
+    ("Plate Armor",   18, "Rare",      LIGHT_GRAY, "Heavy steel plate."),
+    ("Shadow Cloak",  22, "Epic",      PURPLE,     "+20 AGI, dodge 10%."),
+    ("Dragon Scale",  28, "Epic",      ORANGE,     "Fire resistance +30%."),
+    ("Aegis Plate",   40, "Legendary", GOLD,       "Blocks 1 hit every 10 sec."),
+    ("Void Robe",     32, "Legendary", PURPLE,     "+50% spell power."),
 ]
 
 ACCESSORY_POOL = [
     # (name, rarity, color, effect_desc, stat_bonus)  — keys are direct Player attrs
-    ("Iron Ring",      "Common",    GRAY,       "+5 ATK",              {"base_damage": 5}),
-    ("Speed Boots",    "Common",    BROWN,      "+0.4 Move Speed",     {"move_speed": 0.4}),
-    ("HP Talisman",    "Rare",      RED,        "+30 Max HP",          {"max_hp": 30}),
-    ("Mana Crystal",   "Rare",      LIGHT_BLUE, "+25 Max Mana",        {"max_mana": 25}),
-    ("Lucky Charm",    "Epic",      GOLD,       "+8% Crit Chance",     {"crit_chance": 0.08}),
-    ("Berserker Ring", "Epic",      RED,        "+12 ATK, -20 Max HP", {"base_damage": 12, "max_hp": -20}),
-    ("God's Amulet",   "Legendary", GOLD,       "+10 ATK, +40 HP, +0.5 Spd", {"base_damage": 10, "max_hp": 40, "move_speed": 0.5}),
+    ("Iron Ring",      "Common",    GRAY,       "+6 ATK",                      {"base_damage": 6}),
+    ("Speed Boots",    "Common",    BROWN,      "+0.5 Move Speed",             {"move_speed": 0.5}),
+    ("HP Talisman",    "Rare",      RED,        "+35 Max HP",                  {"max_hp": 35}),
+    ("Mana Crystal",   "Rare",      LIGHT_BLUE, "+30 Max Mana",                {"max_mana": 30}),
+    ("Lucky Charm",    "Epic",      GOLD,       "+10% Crit Chance",            {"crit_chance": 0.10}),
+    ("Berserker Ring", "Epic",      RED,        "+15 ATK, -20 Max HP",         {"base_damage": 15, "max_hp": -20}),
+    ("God's Amulet",   "Legendary", GOLD,       "+12 ATK, +50 HP, +0.5 Spd",  {"base_damage": 12, "max_hp": 50, "move_speed": 0.5}),
 ]
 
 # ── EXP (kept minimal - no level up UI) ──────────────────────
@@ -261,17 +266,17 @@ CLASS_SKILLS = {
         {
             "name": "Dash",
             "key": "Q",
-            "cooldown": 4.0,
-            "mana_cost": 15,
+            "cooldown": 3.5,       # ↓ 4.0→3.5  (more frequent, feels snappier)
+            "mana_cost": 12,       # ↓ 15→12    (less punishing)
             "type": "dash",
             "color": (0, 220, 200),
-            "description": "Dash forward quickly.",
+            "description": "Dash forward quickly. Brief invincibility.",
         },
         {
             "name": "Star Shot",
             "key": "F",
-            "cooldown": 6.0,
-            "mana_cost": 25,
+            "cooldown": 5.5,       # ↓ 6.0→5.5
+            "mana_cost": 20,       # ↓ 25→20
             "type": "star_spread",
             "color": (255, 210, 0),
             "description": "Fire 3 star bullets in a spread.",
@@ -279,12 +284,12 @@ CLASS_SKILLS = {
         {
             "name": "Frenzy",
             "key": "R",
-            "cooldown": 8.0,
-            "mana_cost": 20,
+            "cooldown": 9.0,       # ↑ 8.0→9.0  (duration is strong, needs longer cd)
+            "mana_cost": 22,       # ↑ 20→22
             "type": "rapid_fire",
-            "duration": 3.0,
+            "duration": 3.5,       # ↑ 3.0→3.5  (feels more rewarding per use)
             "color": (255, 100, 30),
-            "description": "Fire rate x2.5 for 3 seconds.",
+            "description": "Fire rate x2.5 for 3.5 seconds.",
         },
     ],
 }

@@ -592,7 +592,7 @@ class MainMenuScreen:
                        ("Victories",   summary["victories"]),
                        ("Best Score",  f"{summary['best_score']:,}")]
             right_s = [("Avg Kills",    summary["avg_kills"]),
-                       ("Max Level",    summary["max_level"]),
+                       ("Avg Damage",   f"{summary['avg_damage']:,}"),
                        ("Avg Duration", f"{summary['avg_duration']}s")]
             for i,(lbl,val) in enumerate(left_s):
                 draw_text(surface, lbl+":", px2+22, sy2+i*24, 11, TEXT_DIM)

@@ -21,12 +21,13 @@ from constants import (
     STATE_INVENTORY, STATE_PAUSED, STATE_GAME_OVER,
     STATE_VICTORY, STATE_SHOP, STATE_STATS, STATE_RANGE,
     WHITE, RED, GREEN, YELLOW, GOLD, CYAN, ORANGE, BLACK, GRAY,
-    STAGE_CONFIGS,
+    STAGE_CONFIGS, MAP_W, MAP_H, TILE,
 )
 from player        import Player
 from stage         import Stage
 from enemy         import EnemyBullet
 from bullet        import Bullet, DroppedItem, FloatingText, draw_hud, Portal, LaserBeam, SkillParticle
+from hit_fx        import spawn_hit_fx, spawn_player_hit_fx, spawn_kill_fx, spawn_wall_hit_fx
 from stats_tracker import StatsTracker
 from ui            import (MainMenuScreen, ClassSelectScreen, InventoryScreen,
                            ShopScreen, PauseScreen, GameOverScreen,
@@ -1122,6 +1123,9 @@ class GameManager:
     def _restart_game(self):
         """Restart with the same class from stage 1."""
         if self.player:
+            # FIX: save current run as abandoned before restarting
+            if self.tracker._run_active:
+                self.tracker.end_run("abandoned", self.player)
             char_class = self.player.char_class
             self._start_new_game(char_class)
 
@@ -1629,6 +1633,32 @@ class GameManager:
                             self.shake_timer = max(self.shake_timer, shake_dur)
                             self.shake_mag   = max(self.shake_mag,   shake_mag)
 
+            elif wpn and wpn.is_melee:
+                # ── FIX Bug 4: Melee attack handler ────────────────
+                MELEE_RANGE = 55
+                if p.shoot_cooldown <= 0:
+                    dmg_m, crit_m = p.calc_damage()
+                    hit_any = False
+                    for e in list(self.enemies):
+                        if not e.alive:
+                            continue
+                        if math.hypot(e.x - p.x, e.y - p.y) < MELEE_RANGE + e.size:
+                            actual_m = e.take_damage(dmg_m)
+                            col_m    = GOLD if crit_m else WHITE
+                            label_m  = f"{'CRIT! ' if crit_m else ''}{actual_m}"
+                            self._add_fx(e.x, e.y - e.size, label_m, col_m)
+                            self.sfx.play("hit_enemy")
+                            # FIX: log melee damage
+                            self.tracker.log_event("damage", {
+                                "amount": actual_m, "is_crit": crit_m,
+                                "enemy_type": e.enemy_type
+                            })
+                            hit_any = True
+                    if hit_any:
+                        self.shake_timer = max(self.shake_timer, 0.10)
+                        self.shake_mag   = max(self.shake_mag, 4)
+                    p.shoot_cooldown = 1.0 / max(0.1, p.get_fire_rate())
+
         # ── Burst queue flush (burst3 follow-up shots) ─────────
         if getattr(p, '_burst_queue', 0) > 0:
             p._burst_timer -= dt
@@ -1651,6 +1681,13 @@ class GameManager:
         for b in list(self.bullets):
             b.update(dt, walls)
             if not b.alive:
+                # Detect wall hit vs out-of-bounds: wall hits are still inside the map
+                _map_w = MAP_W * TILE
+                _map_h = MAP_H * TILE
+                if 0 <= b.x <= _map_w and 0 <= b.y <= _map_h:
+                    spawn_wall_hit_fx(self.skill_fx, b.x, b.y,
+                                      bullet_dx=b.dx, bullet_dy=b.dy,
+                                      bullet_color=b.color)
                 self.bullets.remove(b)
                 continue
 
@@ -1680,6 +1717,8 @@ class GameManager:
                     label = f"{'CRIT! ' if b.is_crit else ''}{actual}"
                     self._add_fx(e.x, e.y - e.size, label, col)
                     self.sfx.play("hit_enemy")
+                    spawn_hit_fx(self.skill_fx, e.x, e.y - e.size // 2,
+                                 is_crit=b.is_crit, bullet_color=b.color)
                     self.tracker.log_event("damage", {
                         "amount": actual, "is_crit": b.is_crit,
                         "enemy_type": e.enemy_type
@@ -1692,6 +1731,12 @@ class GameManager:
         for eb in list(self.e_bullets):
             eb.update(dt, walls)
             if not eb.alive:
+                _map_w = MAP_W * TILE
+                _map_h = MAP_H * TILE
+                if 0 <= eb.x <= _map_w and 0 <= eb.y <= _map_h:
+                    spawn_wall_hit_fx(self.skill_fx, eb.x, eb.y,
+                                      bullet_dx=eb.dx, bullet_dy=eb.dy,
+                                      bullet_color=getattr(eb, 'color', (255, 80, 80)))
                 self.e_bullets.remove(eb)
                 continue
             # FIX: enemy bullet → player collision
@@ -1702,6 +1747,7 @@ class GameManager:
                     self._add_fx(p.x, p.y - 30, "DODGE!", CYAN, 20)
                 elif dmg >= 0:   # armor-absorbed (0) OR HP lost (>0) — both count as a hit
                     self.sfx.play("hit_player")
+                    spawn_player_hit_fx(self.skill_fx, p.x, p.y)
                     # ── Screen shake on ANY hit (armor or HP) ─
                     self.shake_timer = 0.28
                     self.shake_mag   = 7
@@ -1715,9 +1761,13 @@ class GameManager:
             e.update(p, walls, dt, self.e_bullets)
             if not e.alive:
                 self._last_enemy_pos = (e.x, e.y)   # track for portal spawn
+                from enemy import BossEnemy as _BEfx
+                spawn_kill_fx(self.skill_fx, e.x, e.y, is_boss=isinstance(e, _BEfx))
                 gold_drop = random.randint(2, 6 + self.stage_idx)
                 p.gold += gold_drop
                 self._add_fx(e.x, e.y - e.size - 10, f"+{gold_drop}G", GOLD, 15)
+                # FIX Bug 5: log gold earned per kill
+                self.tracker.log_event("gold", {"amount": gold_drop})
                 # Mana drop: 35% chance, boss always drops mana
                 from enemy import BossEnemy
                 is_boss = isinstance(e, BossEnemy)
@@ -1828,9 +1878,10 @@ class GameManager:
 
         # ── Player death ──────────────────────────────────────
         if not p.alive:
-            # FIX: call end_run so stats are saved
-            self.sfx.play("player_die")
-            self.tracker.end_run("death", p)
+            # FIX: guard — end_run only once per run
+            if self.tracker._run_active:
+                self.sfx.play("player_die")
+                self.tracker.end_run("death", p)
             self.change_state(STATE_GAME_OVER)
 
         # ── Stage completion: spawn portal on last enemy ───────

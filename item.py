@@ -101,16 +101,26 @@ class Weapon(Item):
 
 
 class Armor(Item):
-    """Body armor providing defense."""
+    """Body armor providing defense — increases player's max_armor (shield bar)."""
 
     def __init__(self, name, defense, rarity, color, description):
         price = {"Common": 20, "Rare": 60, "Epic": 140, "Legendary": 350}.get(rarity, 20)
         super().__init__(name, "armor", rarity, color, description, price)
         self.defense = defense
 
+    def apply_effect(self, player):
+        """Equipping armor raises max_armor and fills the shield up to the new max."""
+        player.max_armor = getattr(player, "max_armor", 70) + self.defense
+        player.armor     = min(player.armor + self.defense, player.max_armor)
+
+    def remove_effect(self, player):
+        """Unequipping armor lowers max_armor and clamps current armor."""
+        player.max_armor = max(0, getattr(player, "max_armor", 70) - self.defense)
+        player.armor     = min(player.armor, player.max_armor)
+
     def get_tooltip(self):
         lines = super().get_tooltip()
-        lines.insert(2, f"Defense: {self.defense}")
+        lines.insert(2, f"+{self.defense} Max Armor (shield)")
         return lines
 
     def compare(self, other):
@@ -130,10 +140,63 @@ class Accessory(Item):
 
     def get_tooltip(self):
         lines = super().get_tooltip()
-        bonus_str = "  ".join(f"+{v} {k}" for k, v in self.stat_bonus.items() if v > 0)
-        if bonus_str:
-            lines.insert(2, f"Bonus: {bonus_str}")
+        parts = []
+        for k, v in self.stat_bonus.items():
+            sign = "+" if v >= 0 else ""
+            label = {
+                "base_damage": "ATK",
+                "move_speed":  "SPD",
+                "max_hp":      "Max HP",
+                "max_mana":    "Max Mana",
+                "crit_chance": "Crit%",
+                "crit_mult":   "Crit×",
+                "aspd_mult":   "ASPD×",
+            }.get(k, k)
+            if k == "crit_chance":
+                parts.append(f"{sign}{int(v * 100)}% {label}")
+            else:
+                parts.append(f"{sign}{v} {label}")
+        if parts:
+            lines.insert(2, "Bonus: " + "  ".join(parts))
         return lines
+
+    def apply_effect(self, player):
+        """Apply all stat bonuses and fix hp/mana side-effects."""
+        for key, val in self.stat_bonus.items():
+            if not hasattr(player, key):
+                continue
+            new_val = getattr(player, key) + val
+            # Clamp floats that are percentages / multipliers
+            if key == "crit_chance":
+                new_val = max(0.0, min(1.0, new_val))
+            elif key in ("aspd_mult", "crit_mult"):
+                new_val = max(0.1, new_val)
+            setattr(player, key, new_val)
+        # Side-effects: heal/fill when max increases, clamp when max decreases
+        player.hp    = max(0, min(player.hp,   player.max_hp))
+        player.mana  = max(0, min(player.mana, player.max_mana))
+        # If max_hp increased, restore that much hp (feel rewarding)
+        hp_bonus   = self.stat_bonus.get("max_hp", 0)
+        mana_bonus = self.stat_bonus.get("max_mana", 0)
+        if hp_bonus > 0:
+            player.hp   = min(player.max_hp,   player.hp   + hp_bonus)
+        if mana_bonus > 0:
+            player.mana = min(player.max_mana, player.mana + mana_bonus)
+
+    def remove_effect(self, player):
+        """Remove all stat bonuses and clamp hp/mana to new caps."""
+        for key, val in self.stat_bonus.items():
+            if not hasattr(player, key):
+                continue
+            new_val = getattr(player, key) - val
+            if key == "crit_chance":
+                new_val = max(0.0, min(1.0, new_val))
+            elif key in ("aspd_mult", "crit_mult"):
+                new_val = max(0.1, new_val)
+            setattr(player, key, new_val)
+        # Clamp current hp/mana to the (now-lower) caps
+        player.hp   = max(0, min(player.hp,   player.max_hp))
+        player.mana = max(0, min(player.mana, player.max_mana))
 
 
 # ── Module-level factory functions ───────────────────────────────────────────

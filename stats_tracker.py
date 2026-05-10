@@ -9,14 +9,14 @@ import random
 import datetime
 
 
-CSV_DIR    = "stats"
+CSV_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats")
 MAIN_CSV   = os.path.join(CSV_DIR, "gameplay_data.csv")
 COMBAT_CSV = os.path.join(CSV_DIR, "combat_log.csv")
 
 MAIN_FIELDS = [
     "session_id", "timestamp", "char_class", "outcome",
     "score", "enemies_defeated", "total_damage", "duration_sec",
-    "items_collected", "level_reached", "gold_earned",
+    "items_collected", "gold_earned",
     "stage_reached", "boss_kills",
 ]
 
@@ -39,8 +39,10 @@ class StatsTracker:
         self.session_id   = None
         self.current_run  = {}
         self.total_runs   = self._count_existing_runs()
-        self._combat_buf  = []   # buffer before flush
+        self._combat_buf  = []
         self._tick        = 0
+        self._start_time  = time.time()   # FIX: always initialised → end_run safe
+        self._run_active  = False         # FIX: guard against duplicate end_run
 
     # ── CSV helpers ───────────────────────────────────────────
     @staticmethod
@@ -58,6 +60,10 @@ class StatsTracker:
 
     # ── Run lifecycle ─────────────────────────────────────────
     def start_run(self, player):
+        # If a run is already active (e.g. restart mid-run), end it first
+        if self._run_active and self.current_run:
+            self.end_run("abandoned", player)
+
         self.session_id  = f"{int(time.time())}_{random.randint(1000,9999)}"
         self.current_run = {
             "session_id":      self.session_id,
@@ -69,7 +75,6 @@ class StatsTracker:
             "total_damage":    0,
             "duration_sec":    0,
             "items_collected": 0,
-            "level_reached":   1,
             "gold_earned":     0,
             "stage_reached":   1,
             "boss_kills":      0,
@@ -77,9 +82,12 @@ class StatsTracker:
         self._start_time = time.time()
         self._combat_buf = []
         self._tick       = 0
+        self._run_active = True
 
     def log_event(self, event_type, data: dict):
         """Called during gameplay on key events."""
+        if not self._run_active or not self.current_run:   # FIX: guard
+            return
         if event_type == "kill":
             self.current_run["enemies_defeated"] += 1
             if data.get("is_boss"):
@@ -105,9 +113,6 @@ class StatsTracker:
             rarity_bonus = {"Common": 10, "Rare": 50, "Epic": 150, "Legendary": 500}
             self.current_run["score"] += rarity_bonus.get(rarity, 10)
 
-        elif event_type == "level_up":
-            self.current_run["level_reached"] = data.get("level", 1)
-
         elif event_type == "gold":
             self.current_run["gold_earned"] += data.get("amount", 0)
 
@@ -118,12 +123,13 @@ class StatsTracker:
             self.current_run["score"] += stage * 500
 
     def end_run(self, outcome, player):
-        """Called when run ends (death or victory)."""
+        """Called when run ends (death, victory, or abandoned on restart)."""
+        if not self._run_active or not self.current_run:   # FIX: guard duplicate
+            return
+        self._run_active = False
         self.current_run["outcome"]      = outcome
         self.current_run["duration_sec"] = int(time.time() - self._start_time)
-        self.current_run["level_reached"]= 1  # level removed
         self.current_run["gold_earned"]  = player.gold
-        # Score bonus for victory
         if outcome == "victory":
             self.current_run["score"] *= 2
         self.save_to_csv()
@@ -153,7 +159,6 @@ class StatsTracker:
         kills   = [int(r["enemies_defeated"]) for r in rows]
         dmg     = [int(r["total_damage"])     for r in rows]
         dur     = [int(r["duration_sec"])     for r in rows]
-        levels  = [int(r["level_reached"])    for r in rows]
         wins    = sum(1 for r in rows if r["outcome"] == "victory")
         return {
             "total_runs":    len(rows),
@@ -163,7 +168,6 @@ class StatsTracker:
             "avg_kills":     sum(kills)  // max(1, len(kills)),
             "avg_damage":    sum(dmg)    // max(1, len(dmg)),
             "avg_duration":  sum(dur)    // max(1, len(dur)),
-            "max_level":     max(levels) if levels else 1,
         }
 
     def _load_rows(self):
@@ -196,7 +200,6 @@ class StatsTracker:
         dmg      = [int(r["total_damage"])      for r in rows]
         dur      = [int(r["duration_sec"])      for r in rows]
         items    = [int(r["items_collected"])   for r in rows]
-        levels   = [int(r["level_reached"])     for r in rows]
         classes  = [r["char_class"]             for r in rows]
         outcomes = [r["outcome"]                for r in rows]
         stages   = [int(r["stage_reached"])     for r in rows]

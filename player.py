@@ -722,7 +722,7 @@ class Player:
         for row in range(8):
             for col in range(8):
                 ox  = (row % 2) * 3
-                lx  = cx - 25 + col * lw + ox
+                lx  = cx - 27 + col * lw + ox
                 ly  = cy - 14 + row * lh
                 ring = pygame.Surface((lw + 2, lh + 2), pygame.SRCALPHA)
                 pygame.draw.ellipse(ring, (*c1, 255), (0, 0, lw + 2, lh + 2))
@@ -732,7 +732,7 @@ class Player:
         sa = int(50 + 40 * math.sin(t * 2.8))
         sh = pygame.Surface((44, 24), pygame.SRCALPHA)
         pygame.draw.ellipse(sh, (*c3, sa), (0, 0, 44, 24))
-        canvas.blit(sh, (cx - 24, cy - 13))
+        canvas.blit(sh, (cx - 26, cy - 13))
 
     def _armor_plate(self, canvas, cx, cy, c1, c2, c3, t):
         """Plate Armor — breastplate + shine (no pauldrons)."""
@@ -771,9 +771,9 @@ class Player:
         """Dragon Scale — chest scales only."""
         sw, sh = 11, 8
         rows = [
-            (cx - 23, cy - 14, 6),
-            (cx - 26, cy -  7, 6),
-            (cx - 23, cy,      6),
+            (cx - 29, cy - 14, 7),
+            (cx - 32, cy -  7, 6),
+            (cx - 29, cy,      7),
         ]
         for rx, ry, cnt in rows:
             for i in range(cnt):
@@ -785,9 +785,9 @@ class Player:
                 canvas.blit(sc, (lx, ry))
         # Inner ember glow
         ga = int(28 + 22 * math.sin(t * 2.6))
-        glow = pygame.Surface((54, 32), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow, (*c3, ga), (0, 0, 54, 32))
-        canvas.blit(glow, (cx - 27, cy - 15))
+        glow = pygame.Surface((58, 32), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow, (*c3, ga), (0, 0, 58, 32))
+        canvas.blit(glow, (cx - 33, cy - 15))
 
     def _armor_aegis(self, canvas, cx, cy, c1, c2, c3, t):
         """Aegis Plate — legendary gold armor with holy cross emblem + radiance."""
