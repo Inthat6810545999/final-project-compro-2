@@ -6,7 +6,7 @@ This document describes every visualization in the Sausage Man: Legends of Midga
 
 ## Dashboard Overview
 
-![Dashboard Overview](screenshots/visualization/dashboard_overview.png)
+![Dashboard Overview](dashboard_overview.png)
 
 The dashboard is a single 6-panel Matplotlib window that summarizes all recorded gameplay runs in one view. It is divided into two rows of three charts, each focusing on a different dimension of gameplay performance: scoring trends, combat effectiveness, stage progression, and run duration. The dashboard updates automatically every time it is opened, reading all rows stored in the CSV at that point in time.
 
