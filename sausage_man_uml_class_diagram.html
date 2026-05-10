@@ -1,0 +1,347 @@
+
+<style>
+#uml { padding: 1rem 0; }
+#uml svg { max-width: 100%; }
+pre#mermaid-src {
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  white-space: pre;
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+button#copy-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 10px;
+  padding: 6px 14px; border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-border-secondary);
+  background: var(--color-background-secondary);
+  color: var(--color-text-primary);
+  font-size: 13px; cursor: pointer;
+}
+button#copy-btn:hover { background: var(--color-background-tertiary); }
+</style>
+
+<div id="uml"></div>
+<button id="copy-btn" onclick="copyCode()"><i class="ti ti-copy" aria-hidden="true"></i> Copy Mermaid code</button>
+<pre id="mermaid-src">classDiagram
+    direction TB
+
+    class Item {
+        +String name
+        +String item_type
+        +String rarity
+        +tuple color
+        +String description
+        +int sell_price
+        +rarity_color()
+        +get_tooltip() list
+        +apply_effect(player)
+        +remove_effect(player)
+    }
+
+    class Weapon {
+        +int damage
+        +float fire_rate
+        +int bullet_speed
+        +bool is_melee
+        +String weapon_class
+        +dict stat_bonus
+        +dict effect
+        +int mana_cost
+        +can_equip(player) bool
+        +get_tooltip() list
+    }
+
+    class Armor {
+        +int defense
+        +apply_effect(player)
+        +remove_effect(player)
+        +get_tooltip() list
+    }
+
+    class Accessory {
+        +dict stat_bonus
+        +String effect_desc
+        +apply_effect(player)
+        +remove_effect(player)
+        +get_tooltip() list
+    }
+
+    Item <|-- Weapon
+    Item <|-- Armor
+    Item <|-- Accessory
+
+    class Player {
+        +int RADIUS
+        +String name
+        +String char_class
+        +float x, y, speed
+        +int max_hp, hp
+        +int max_armor, armor
+        +int max_mana, mana
+        +float crit_chance, crit_mult
+        +dict equipment
+        +list inventory
+        +int gold
+        +bool alive
+        +equip(item)
+        +take_damage(raw) int
+        +heal(amount)
+        +calc_damage() tuple
+        +move(dx, dy, walls)
+        +update(dt, walls, mouse)
+        +draw(surface, cam_x, cam_y)
+        +use_mana(amount) bool
+    }
+
+    class Enemy {
+        +float x, y
+        +int hp, max_hp, atk, speed
+        +int size, exp
+        +String state
+        +bool alive, activated
+        +float shoot_timer, shoot_cd
+        +update(player, walls, dt, bullets)
+        +take_damage(dmg) int
+        +draw(surface, cam_x, cam_y)
+        +_do_attack(player, bullets, dt, walls)
+        +_move_towards(tx, ty, walls, dt)
+    }
+
+    class RangedEnemy {
+        +int ATTACK_RANGE
+        +float FLEE_HP_PCT
+        +_do_attack(player, bullets, dt, walls)
+    }
+
+    class EliteEnemy {
+        +int ATTACK_RANGE
+        +_do_attack(player, bullets, dt, walls)
+    }
+
+    class BossEnemy {
+        +int ATTACK_RANGE
+        +int phase
+        +_do_attack(player, bullets, dt, walls)
+    }
+
+    class MeleeEnemy {
+        +int ATTACK_RANGE
+        +_do_attack(player, bullets, dt, walls)
+    }
+
+    Enemy <|-- RangedEnemy
+    Enemy <|-- EliteEnemy
+    Enemy <|-- BossEnemy
+    Enemy <|-- MeleeEnemy
+
+    class EnemyBullet {
+        +float x, y, dx, dy
+        +float speed, damage, radius
+        +bool alive
+        +update(dt, walls)
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class Bullet {
+        +float x, y, vx, vy
+        +float speed, damage, radius
+        +bool pierce, alive, is_crit
+        +tuple color
+        +set hit_set
+        +update(dt, walls)
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class LaserBeam {
+        +float x1, y1, x2, y2
+        +float width, life
+        +tuple color
+        +bool alive
+        +update(dt)
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class DroppedItem {
+        +float x, y
+        +Item item
+        +bool alive
+        +can_pickup(player) bool
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class FloatingText {
+        +float x, y, vy
+        +String text
+        +float life
+        +bool alive
+        +update(dt)
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class Portal {
+        +float x, y
+        +float life
+        +bool alive
+        +update(dt)
+        +draw(surface, cam_x, cam_y)
+    }
+
+    class Stage {
+        +int theme_id
+        +list rooms
+        +list walls
+        +float cam_x, cam_y
+        +generate_bsp()
+        +update(dt)
+        +draw(surface)
+        +get_room_at(x, y)
+        +update_camera(tx, ty)
+        +check_completion(enemies) bool
+        +spawn_enemies(cfg) list
+    }
+
+    class StatsTracker {
+        +String session_id
+        +dict current_run
+        +int total_runs
+        +bool _run_active
+        +start_run(player)
+        +log_event(event_type, data)
+        +end_run(outcome, player)
+        +save_to_csv()
+        +get_summary() dict
+        +plot_dashboard()
+    }
+
+    class SoundManager {
+        +bool _enabled
+        +dict _sounds
+        +dict _cooldowns
+        +play(name, volume)
+        +update(dt)
+        +toggle() bool
+        +play_shoot(weapon)
+        +play_skill(stype)
+    }
+
+    class GameManager {
+        +Surface screen
+        +String state
+        +Player player
+        +Stage stage
+        +StatsTracker tracker
+        +SoundManager sfx
+        +list enemies
+        +list bullets
+        +list e_bullets
+        +list drops
+        +list skill_fx
+        +int stage_idx
+        +run()
+        +change_state(new_state)
+        +_update(dt, mouse_pos)
+        +_new_game()
+        +_try_pickup()
+        +_use_skill(idx)
+    }
+
+    class MainMenuScreen {
+        +draw(surface, mouse) str
+    }
+    class ClassSelectScreen {
+        +draw(surface, mouse) str
+    }
+    class InventoryScreen {
+        +draw(surface, player, mouse) str
+        +handle_click(pos, player) str
+    }
+    class ShopScreen {
+        +list stock
+        +draw(surface, player, mouse) str
+        +handle_click(pos, player) str
+    }
+    class PauseScreen {
+        +draw(surface, mouse) str
+    }
+    class GameOverScreen {
+        +draw(surface, player, tracker, mouse) str
+    }
+    class ShootingRangeScreen {
+        +Player player
+        +draw(surface, mouse) str
+        +update(dt, mouse)
+    }
+
+    DroppedItem *-- Item : contains
+    Player *-- Weapon : equips
+    Player *-- Armor : equips
+    Player *-- Accessory : equips
+    Player "1" o-- "*" Item : inventory
+
+    GameManager *-- Player : owns
+    GameManager *-- Stage : owns
+    GameManager *-- StatsTracker : owns
+    GameManager *-- SoundManager : owns
+    GameManager "1" o-- "*" Enemy : manages
+    GameManager "1" o-- "*" Bullet : manages
+    GameManager "1" o-- "*" EnemyBullet : manages
+    GameManager "1" o-- "*" DroppedItem : manages
+    GameManager --> MainMenuScreen : uses
+    GameManager --> InventoryScreen : uses
+    GameManager --> ShopScreen : uses
+    GameManager --> PauseScreen : uses
+    GameManager --> GameOverScreen : uses
+    GameManager --> ClassSelectScreen : uses
+    GameManager --> ShootingRangeScreen : uses
+
+    Enemy "1" ..> "*" EnemyBullet : spawns
+    Stage ..> Enemy : spawns
+</pre>
+
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '12px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+    classText: dark ? '#c2c0b6' : '#3d3d3a',
+    primaryColor: dark ? '#2a2836' : '#EEEDFE',
+    primaryBorderColor: dark ? '#534AB7' : '#534AB7',
+    primaryTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    secondaryColor: dark ? '#1e2a26' : '#E1F5EE',
+    tertiaryColor: dark ? '#2a2420' : '#FAEEDA',
+  },
+});
+const src = document.getElementById('mermaid-src').textContent;
+try {
+  const { svg } = await mermaid.render('uml-svg', src);
+  document.getElementById('uml').innerHTML = svg;
+} catch(e) {
+  document.getElementById('uml').innerHTML = '<p style="color:var(--color-text-danger)">Render error — copy the code below and paste into mermaid.live</p>';
+}
+</script>
+
+<script>
+function copyCode() {
+  const code = document.getElementById('mermaid-src').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Copied!';
+    setTimeout(() => btn.innerHTML = '<i class="ti ti-copy" aria-hidden="true"></i> Copy Mermaid code', 2000);
+  });
+}
+</script>

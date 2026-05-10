@@ -13,7 +13,7 @@ A fast-paced top-down shooter built with Pygame where you play as the legendary 
 
 Clone this project:
 ```sh
-git clone https://github.com/<your-username>/sausage-man-legends-of-midgard.git
+git clone https://github.com/Inthat6810545999/final-project-compro-2.git
 cd sausage-man-legends-of-midgard
 ```
 
@@ -81,7 +81,7 @@ python3 main.py
 - **5 Themed Stages** — Forest, Dungeon, Volcano, Sky Citadel, and Final Chamber, each with unique enemies and a boss.
 - **30+ Weapons** across 4 rarities (Common → Legendary), including pistols, shotguns, snipers, lasers, and rocket launchers. Each weapon has unique bullet patterns: single, spread, pierce, burst, and laser beam.
 - **8 Armor Sets** with animated visual overlays (particles, glows, and auras) drawn procedurally onto the player sprite.
-- **7 Accessories** providing passive stat bonuses (ATK, HP, speed, crit chance, etc.).
+- **7 Accessories** providing passive stat bonuses (ATK, HP, Mana, Speed, Crit%) that take effect immediately on equip.
 - **3 Active Skills** — Dash, Star Shot, and Frenzy — each with a cooldown and mana cost.
 - **Enemy AI** — Enemies use state-machine AI (Idle → Patrol → Chase → Attack → Flee) and shoot back at the player.
 - **Elite Shooters & Bosses** — Each stage has a unique elite enemy type and a boss with cinematic intro/death sequences and screen shake.
@@ -104,19 +104,19 @@ python3 main.py
 
 - Additional character classes beyond Sausage Man were planned but not implemented.
 - **Boss multi-phase behaviors** — Bosses currently have a single attack pattern. Planned work includes adding phase transitions (e.g., enrage at 50% HP), new attack patterns per phase, and unique telegraphed moves for each of the 5 stage bosses.
-- **Skill effect icons & visual feedback** — The HUD skill slots (Dash, Star Shot, Frenzy) lack distinctive logos/icons. Planned work includes drawing per-skill icon art and adding cast animations (e.g., flash overlay, screen-edge glow) so the player can clearly see which skill was activated.
-- **Item pickup 2D model preview** — When the player picks up or hovers over a weapon, armor, or accessory, there is no visual representation of the item itself. Planned work includes rendering a small rotating sprite/model of the item (gun shape, armor silhouette, accessory icon) in the pickup tooltip or as a world-space billboard.
-- **Improved visual effects** — Several particle effects (bullet impacts, armor auras, portal swirl, boss death explosion) need polish. Planned work includes higher-density particle systems, additive blending, and screen-space distortion effects for key moments.
-- **Game balance pass** — Enemy HP, damage values, weapon damage scaling, and gold economy need tuning based on playtesting data. Planned work includes reviewing the statistics dashboard data across multiple runs and adjusting per-stage difficulty curves, weapon tier power gaps, and boss health pools.
-- All 5 stages and core gameplay loop are fully functional and complete.
+- **Skill effect icons & visual feedback** — The HUD skill slots (Dash, Star Shot, Frenzy) lack distinctive logos/icons. Planned work includes drawing per-skill icon art and adding cast animations so the player can clearly see which skill was activated.
+- **Item pickup 2D model preview** — No visual representation of an item is shown when hovering. Planned work includes rendering a small rotating sprite/model in the pickup tooltip.
+- **Improved visual effects** — Several particle effects (bullet impacts, armor auras, portal swirl, boss death explosion) need polish.
+- **Game balance pass** — Enemy HP, damage values, weapon damage scaling, and gold economy need tuning based on playtesting data.
+- All 5 stages and the core gameplay loop are fully functional and complete.
 
 ---
 
 ## External Sources
 
-1. **Pygame** — https://www.pygame.org — Game framework (LGPL License)
-2. **NumPy** — https://numpy.org — Procedural audio synthesis (BSD License)
-3. **Pandas** — https://pandas.pydata.org — Data handling (BSD License)
-4. **Matplotlib** — https://matplotlib.org — Statistics visualization (PSF-based License)
-5. **Seaborn** — https://seaborn.pydata.org — Plot styling (BSD License)
+1. **Pygame** — https://www.pygame.org (LGPL License)
+2. **NumPy** — https://numpy.org (BSD License)
+3. **Pandas** — https://pandas.pydata.org (BSD License)
+4. **Matplotlib** — https://matplotlib.org (PSF-based License)
+5. **Seaborn** — https://seaborn.pydata.org (BSD License)
 6. **Sausageguy.png** — Player character sprite (original artwork for this project)

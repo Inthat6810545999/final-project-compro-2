@@ -242,8 +242,8 @@ class Player:
             self._armor_regen_timer = 0.0
         hp_lost = 0
         if leftover > 0:
-            self.hp   = max(0, self.hp - leftover)
-            hp_lost   = leftover
+            self.hp   = max(0, int(self.hp - leftover))   # int() prevents float ghost HP (e.g. 0.73 showing as 0 but not dying)
+            hp_lost   = int(leftover) or 1
         self.iframe_timer = self.IFRAME_DUR
         if self.hp <= 0:
             self.alive = False

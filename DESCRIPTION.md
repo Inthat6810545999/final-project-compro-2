@@ -3,7 +3,7 @@
 ## 1. Project Overview
 
 - **Project Name:** Sausage Man: Legends of Midgard
-- **Project by:** Inthat Niramarn (6810545999)
+- **Project by:** Inthat Niramarn 6810545999
 
 **Brief Description:**
 
@@ -29,6 +29,19 @@ The game draws inspiration from the mobile game *Soul Knight*, emphasizing weapo
   - Gameplay statistics saved to CSV and visualized in a 6-panel Matplotlib dashboard
   - Shooting Range practice mode from the main menu
 
+**Screenshots:**
+
+| Gameplay | Statistics Dashboard |
+|---|---|
+| ![Gameplay](screenshots/gameplay/gameplay_01.png) | ![Dashboard](screenshots/visualization/dashboard_overview.png) |
+
+> See the [`screenshots/`](screenshots/) folder for the full set of gameplay and visualization screenshots.
+
+**Proposal:** [Project Proposal (PDF)](proposal.pdf)
+
+**YouTube Presentation:** [▶ Watch on YouTube](https://www.youtube.com/watch?v=REPLACE_WITH_YOUR_VIDEO_ID)
+> *(~7 min) — Covers game demo, OOP class design, and data visualization walkthrough.*
+
 ---
 
 ## 2. Concept
@@ -53,7 +66,7 @@ The project also addresses a practical gap: many game projects use pre-made asse
 
 ## 3. UML Class Diagram
 
-The UML class diagram is attached in **UML.pdf** in the project root.
+The UML class diagram is attached in **[UML.pdf](UML.pdf)** in the project root.
 
 **Summary of key relationships:**
 
@@ -102,7 +115,7 @@ Player
 | `Item` | `item.py` | Abstract base for all collectible items. Holds name, type, rarity, color, description, and sell price. Provides `apply_effect` / `remove_effect` for stat bonuses. |
 | `Weapon` | `item.py` | Subclass of Item. Stores damage, fire rate, bullet speed, bullet pattern, and mana cost. Supports melee and ranged variants. |
 | `Armor` | `item.py` | Subclass of Item. Stores defense value; equipping triggers animated visual overlay on the player. |
-| `Accessory` | `item.py` | Subclass of Item. Applies a `stat_bonus` dict directly to Player attributes on equip. |
+| `Accessory` | `item.py` | Subclass of Item. Applies a `stat_bonus` dict (ATK, SPD, Max HP, Max Mana, Crit%) to Player attributes on equip/unequip with proper clamping. |
 | `Player` | `player.py` | Represents the player character. Handles movement with wall collision, shooting cooldown, mana regen, armor regen, damage/crit calculation, skill cooldowns, inventory management, and procedural armor visual FX. |
 | `Enemy` | `enemy.py` | Base class for all enemies. Implements 5-state AI (IDLE, PATROL, CHASE, ATTACK, FLEE), wall-aware movement, shooting, drop spawning, and PNG sprite loading with polygon fallback. |
 | `RangedEnemy` | `enemy.py` | Subclass of Enemy with tuned shoot-range behavior. |
@@ -151,7 +164,6 @@ Both CSV files are created automatically on first launch. The dashboard is acces
 | `total_damage` | Sum of all damage dealt to enemies |
 | `duration_sec` | Wall-clock seconds the run lasted |
 | `items_collected` | Number of items picked up |
-| `level_reached` | Player level at end of run |
 | `gold_earned` | Total gold accumulated |
 | `stage_reached` | Furthest stage index reached (1–5) |
 | `boss_kills` | Number of bosses defeated |
@@ -180,6 +192,7 @@ The Matplotlib dashboard visualizes these six views:
 
 - The original proposal included multiple playable character classes. The final version ships with a single class (Sausage Man) with a balanced, complete skill set. The class-select screen is present but only one class is available.
 - The level-up system was simplified — the `level_reached` field remains in the CSV for compatibility, but the in-run level-up UI was removed in favour of item-based progression only.
+- Boss multi-phase behaviors were scoped down to single-phase patterns for the submission deadline; phase transitions remain a documented planned feature.
 
 ---
 
